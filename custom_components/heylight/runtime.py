@@ -17,10 +17,15 @@ DEFAULT_COLORS: tuple[tuple[int, int, int], ...] = (
     (0, 0, 255),
 )
 
+# Scene IDs reviewed against Heylight 2.3.18 btsigTelink scene handling.
+# The app labels scene 3 as flickStep3 / "flick around", while scene 2 is
+# also handled by the Telink firmware path.  Keep both temporarily so the
+# firmware-51 / PID 0xFAC8 string can identify which variant it implements.
 EFFECT_TO_SCENE: dict[str, int] = {
     "normal": 0,
     "flick": 1,
     "flick around": 3,
+    "flick around 2 (test)": 2,
     "random color": 5,
     "fading": 6,
     "fading adv": 7,
@@ -33,12 +38,12 @@ EFFECT_TO_SCENE: dict[str, int] = {
     "collide": 18,
     "little fire": 19,
     "random breath": 21,
-    "wave up": 27,
     "wave down": 22,
     "flag": 23,
-    "head up": 24,
+    "heap up": 24,
     "vertical wave": 25,
     "snake": 26,
+    "wave up": 27,
 }
 
 
@@ -85,6 +90,24 @@ class HeylightRuntime:
     def palette_controls_available(self) -> bool:
         return self.palette_color_slots > 1
 
+    def _brightness_scaled(
+        self, rgb: tuple[int, int, int]
+    ) -> tuple[int, int, int]:
+        """Scale RGB value like lowering HSV V, without changing saved color.
+
+        Heylight's standalone F3 brightness command is accepted by the app
+        protocol but PID 0xFAC8 firmware 51 did not physically react to it.
+        Scene colours do react, so brightness is applied to the E6 colour
+        payload instead. Multiplying all RGB channels by the same factor is
+        mathematically equivalent to scaling HSV value while preserving hue
+        and saturation.
+        """
+        factor = max(1, min(255, int(self.brightness))) / 255.0
+        return tuple(
+            max(0, min(255, int(round(channel * factor))))
+            for channel in rgb
+        )
+
     def active_colors(self) -> list[tuple[int, int, int]]:
         slots = self.palette_color_slots
         result = [self.colors[0]]
@@ -93,7 +116,10 @@ class HeylightRuntime:
                 break
             if self.color_enabled[index]:
                 result.append(self.colors[index])
-        return result[:slots]
+
+        # Keep the original UI colours untouched and scale only the values
+        # transmitted to E6. This lets 100% restore the exact chosen colour.
+        return [self._brightness_scaled(color) for color in result[:slots]]
 
     def add_listener(
         self, listener: Callable[[], None]
