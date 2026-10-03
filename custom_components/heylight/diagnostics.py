@@ -5,6 +5,7 @@ from __future__ import annotations
 from homeassistant.core import HomeAssistant
 
 from . import HeylightConfigEntry
+from .timing import get_timing_state
 
 
 async def async_get_config_entry_diagnostics(
@@ -12,6 +13,31 @@ async def async_get_config_entry_diagnostics(
 ) -> dict:
     coordinator = entry.runtime_data
     network = coordinator.network
+
+    nodes = []
+    for node in network.nodes:
+        timing = get_timing_state(coordinator, node)
+        node_data = {
+            "name": node.name,
+            "unicast": f"0x{node.unicast:04x}",
+            "cid": f"0x{node.cid:04x}",
+            "pid": f"0x{node.pid:04x}",
+            "firmware": node.firmware_label,
+            "product_type": node.product_type,
+            "bulb_count": node.bulb_count,
+            "vendor_model": node.has_model(0x02110000),
+            "scheduler_server": node.has_model(0x1206),
+            "scheduler_setup_server": node.has_model(0x1207),
+            "timing_supported": timing.supported,
+        }
+        if timing.loaded:
+            node_data["timing"] = {
+                "enabled": timing.enabled,
+                "repeat": timing.repeat,
+                "turn_on_time": timing.turn_on_time.isoformat(timespec="minutes"),
+                "turn_off_time": timing.turn_off_time.isoformat(timespec="minutes"),
+            }
+        nodes.append(node_data)
 
     return {
         "network": {
@@ -24,17 +50,5 @@ async def async_get_config_entry_diagnostics(
             "last_connection_error": coordinator.last_connection_error,
             "last_disconnect_reason": coordinator.last_disconnect_reason,
         },
-        "nodes": [
-            {
-                "name": node.name,
-                "unicast": f"0x{node.unicast:04x}",
-                "cid": f"0x{node.cid:04x}",
-                "pid": f"0x{node.pid:04x}",
-                "firmware": node.firmware_label,
-                "product_type": node.product_type,
-                "bulb_count": node.bulb_count,
-                "vendor_model": node.has_model(0x02110000),
-            }
-            for node in network.nodes
-        ],
+        "nodes": nodes,
     }
