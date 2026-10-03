@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
 
 from homeassistant.components.file_upload import process_uploaded_file
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import (
     FileSelector,
     FileSelectorConfig,
@@ -38,28 +40,44 @@ STEP_USER_SCHEMA = vol.Schema(
         ),
         vol.Optional(CONF_QR_IMAGE): FileSelector(
             FileSelectorConfig(
-                accept=(
-                    ".png,.jpg,.jpeg,.webp,"
-                    "image/png,image/jpeg,image/webp"
-                )
+                accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
             )
         ),
     }
 )
 
 
-def _decode_qr_image(path) -> str:
-    """Decode the first QR/barcode from an uploaded image."""
-    import zxingcpp
+def _decode_qr_image(path: Path) -> str:
+    """Decode the first QR code from an uploaded image.
+
+    Home Assistant already ships the QR Code integration on HAOS.  Reusing its
+    Pillow + pyzbar stack avoids a compiled third-party wheel that is not
+    available for Home Assistant's Alpine/musl runtime.
+    """
     from PIL import Image
+    from pyzbar import pyzbar
 
     with Image.open(path) as image:
-        barcodes = zxingcpp.read_barcodes(image)
+        barcodes = pyzbar.decode(image)
+
     for barcode in barcodes:
-        text = getattr(barcode, "text", "")
+        data = getattr(barcode, "data", b"")
+        if isinstance(data, bytes):
+            text = data.decode("utf-8", errors="strict").strip()
+        else:
+            text = str(data).strip()
         if text:
             return text
+
     raise ShareDataError("no QR code was found in the uploaded image")
+
+
+def _decode_uploaded_qr(
+    hass: HomeAssistant, uploaded_file_id: str
+) -> str:
+    """Open and decode an uploaded image entirely in the executor thread."""
+    with process_uploaded_file(hass, uploaded_file_id) as uploaded:
+        return _decode_qr_image(uploaded)
 
 
 class HeylightConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -84,12 +102,11 @@ class HeylightConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 try:
                     if upload_id:
-                        with process_uploaded_file(
-                            self.hass, upload_id
-                        ) as uploaded:
-                            qr_text = await self.hass.async_add_executor_job(
-                                _decode_qr_image, uploaded
-                            )
+                        qr_text = await self.hass.async_add_executor_job(
+                            _decode_uploaded_qr,
+                            self.hass,
+                            str(upload_id),
+                        )
 
                     network = parse_share_text(qr_text)
                     normalized = normalize_share_text(qr_text)
