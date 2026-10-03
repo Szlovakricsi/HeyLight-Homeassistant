@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.6
+
+Fixes a regression introduced by aggressive power-state polling.
+
+### Changed
+
+- removed the continuous 5-second vendor power polling
+- Home Assistant now reads the physical power state only after reconnect and shortly after the configured device-side on/off timer transitions
+- this keeps scheduler-driven state changes visible in Home Assistant without continuously querying the Telink controller
+- retained the local Home Assistant brand assets; the integration detail page itself does not currently render a large custom logo even when `logo.png` is available
+
 ## v0.4.5
 
 Improves state synchronization for device-side timing and refreshes integration branding.
