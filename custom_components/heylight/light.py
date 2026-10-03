@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import timedelta
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -18,6 +19,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from . import HeylightConfigEntry
 from .const import DOMAIN
@@ -26,9 +28,10 @@ from .runtime import (
     get_runtime,
     is_supported_node,
 )
+from .timing import get_timing_state
 
 _LOGGER = logging.getLogger(__name__)
-_POWER_POLL_INTERVAL = 5
+_TIMER_REFRESH_DELAY = 3
 
 
 def _device_info(coordinator, node) -> DeviceInfo:
@@ -80,7 +83,9 @@ class HeylightLight(LightEntity, RestoreEntity):
         self._coordinator = coordinator
         self._node = node
         self._runtime = runtime
-        self._power_poll_task: asyncio.Task | None = None
+        self._timing = get_timing_state(coordinator, node)
+        self._refresh_task: asyncio.Task | None = None
+        self._timer_sync_task: asyncio.Task | None = None
         self._attr_unique_id = (
             f"{coordinator.network.identifier}_{node.unicast:04x}"
         )
@@ -143,18 +148,29 @@ class HeylightLight(LightEntity, RestoreEntity):
                 self._availability_changed
             )
         )
+        self.async_on_remove(
+            self._timing.add_listener(self._timing_changed)
+        )
 
         self.async_write_ha_state()
-        self._ensure_power_poll()
+        if self._coordinator.available:
+            self._schedule_refresh()
+        self._reschedule_timer_sync()
 
     async def async_will_remove_from_hass(self) -> None:
-        if self._power_poll_task is not None:
-            self._power_poll_task.cancel()
-            try:
-                await self._power_poll_task
-            except asyncio.CancelledError:
-                pass
-            self._power_poll_task = None
+        for task in (self._refresh_task, self._timer_sync_task):
+            if task is not None:
+                task.cancel()
+        await asyncio.gather(
+            *(
+                task
+                for task in (self._refresh_task, self._timer_sync_task)
+                if task is not None
+            ),
+            return_exceptions=True,
+        )
+        self._refresh_task = None
+        self._timer_sync_task = None
         await super().async_will_remove_from_hass()
 
     @callback
@@ -166,37 +182,88 @@ class HeylightLight(LightEntity, RestoreEntity):
     def _availability_changed(self) -> None:
         if self.hass is not None:
             self.async_write_ha_state()
-        self._ensure_power_poll()
+        if self._coordinator.available:
+            self._schedule_refresh()
+        self._reschedule_timer_sync()
 
-    def _ensure_power_poll(self) -> None:
-        """Keep a lightweight power poll running while the entity exists.
+    @callback
+    def _timing_changed(self) -> None:
+        """Re-arm the HA-side readback helper after timer settings change."""
+        self._reschedule_timer_sync()
 
-        The light can change state without a Home Assistant service call, for
-        example when its device-side Bluetooth Mesh Scheduler fires or the
-        official app controls it. PID 0xFAC8 does not reliably publish an
-        unsolicited vendor power status for those changes, so query E1/E3.
+    def _schedule_refresh(self) -> None:
+        """Query physical power once without continuously polling the mesh."""
+        if self.hass is None or not self._coordinator.available:
+            return
+        if self._refresh_task is not None and not self._refresh_task.done():
+            return
+        self._refresh_task = self.hass.async_create_background_task(
+            self.async_refresh_state(),
+            f"HeyLight refresh {self._node.unicast:04x}",
+        )
+
+    def _reschedule_timer_sync(self) -> None:
+        """Schedule a power readback shortly after the next device timer event.
+
+        The previous 5-second continuous E1 polling was intentionally removed.
+        Some Telink light-string firmware becomes unreliable when repeatedly
+        queried while its on-device Scheduler is active. We only need a
+        readback after the known Scheduler transition to keep Home Assistant's
+        light state synchronized.
         """
         if self.hass is None:
             return
-        if self._power_poll_task is not None and not self._power_poll_task.done():
+        if self._timer_sync_task is not None:
+            self._timer_sync_task.cancel()
+            self._timer_sync_task = None
+        if not self._timing.supported or not self._timing.enabled:
             return
-        self._power_poll_task = self.hass.async_create_background_task(
-            self._power_poll_loop(),
-            f"HeyLight power poll {self._node.unicast:04x}",
+        self._timer_sync_task = self.hass.async_create_background_task(
+            self._timer_sync_loop(),
+            f"HeyLight timer state sync {self._node.unicast:04x}",
         )
 
-    async def _power_poll_loop(self) -> None:
-        """Refresh physical power state periodically.
+    def _next_timer_datetime(self):
+        """Return the next configured on/off timer transition in local time."""
+        now = dt_util.now()
+        candidates = []
+        for configured in (
+            self._timing.turn_on_time,
+            self._timing.turn_off_time,
+        ):
+            target = now.replace(
+                hour=configured.hour,
+                minute=configured.minute,
+                second=configured.second,
+                microsecond=0,
+            )
+            if self._timing.repeat:
+                if target <= now:
+                    target += timedelta(days=1)
+                candidates.append(target)
+            elif target > now:
+                candidates.append(target)
+        return min(candidates) if candidates else None
 
-        Five seconds keeps scheduler-driven state changes visible quickly in
-        Home Assistant without continuously reconnecting: requests only run
-        while the held Mesh Proxy connection is available.
-        """
+    async def _timer_sync_loop(self) -> None:
+        """Read power just after each configured Scheduler transition."""
         try:
-            while True:
+            while self._timing.enabled:
+                target = self._next_timer_datetime()
+                if target is None:
+                    return
+                delay = max(
+                    0.0,
+                    (target - dt_util.now()).total_seconds()
+                    + _TIMER_REFRESH_DELAY,
+                )
+                await asyncio.sleep(delay)
                 if self._coordinator.available:
                     await self.async_refresh_state()
-                await asyncio.sleep(_POWER_POLL_INTERVAL)
+                if not self._timing.repeat:
+                    # A non-repeating setup may still have the second event
+                    # later today, so loop once more and recalculate.
+                    continue
         except asyncio.CancelledError:
             raise
 
