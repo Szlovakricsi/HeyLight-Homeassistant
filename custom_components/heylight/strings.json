@@ -1,0 +1,28 @@
+{
+  "title": "HeyLight",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect a HeyLight mesh",
+        "description": "Paste the full text decoded from Heylight's Share Device QR code, or upload an image containing that QR code. Use exactly one method.",
+        "data": {
+          "qr_text": "Share Device QR text",
+          "qr_image": "Share Device QR image"
+        },
+        "data_description": {
+          "qr_text": "Paste the JSON text beginning with {\"agent\":...",
+          "qr_image": "PNG/JPEG/WebP photo or screenshot of the QR code."
+        }
+      }
+    },
+    "error": {
+      "missing_input": "Paste the QR text or upload a QR image.",
+      "choose_one": "Use either QR text or a QR image, not both.",
+      "invalid_share": "The QR data is not a supported HeyLight Share Device payload: {reason}",
+      "invalid_qr": "The uploaded image could not be decoded as a HeyLight QR code: {reason}"
+    },
+    "abort": {
+      "already_configured": "This HeyLight mesh is already configured."
+    }
+  }
+}

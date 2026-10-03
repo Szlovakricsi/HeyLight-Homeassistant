@@ -1,0 +1,11 @@
+HeyLight Home Assistant integration
+
+The Bluetooth Mesh cryptographic/network/transport implementation in
+custom_components/heylight/btmesh is derived in part from:
+  https://github.com/dasimon135/ha-bluetooth-mesh
+Copyright (c) 2026 David Simon
+Licensed under the MIT License.
+
+HeyLight/Telink vendor command support was independently derived from observed
+device behavior and the Heylight Android application for interoperability.
+This project is not affiliated with Heylight, Telink, DekorTrend, or Home Assistant.

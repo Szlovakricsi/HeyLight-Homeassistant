@@ -1,0 +1,28 @@
+{
+  "title": "HeyLight",
+  "config": {
+    "step": {
+      "user": {
+        "title": "HeyLight mesh hozzáadása",
+        "description": "Illeszd be a Heylight Share Device QR-kód teljes dekódolt szövegét, vagy tölts fel egy képet a QR-kódról. A két módszer közül csak az egyiket használd.",
+        "data": {
+          "qr_text": "Share Device QR szövege",
+          "qr_image": "Share Device QR képe"
+        },
+        "data_description": {
+          "qr_text": "A teljes JSON szöveget illeszd be, amely így kezdődik: {\"agent\":...",
+          "qr_image": "PNG/JPEG/WebP kép vagy képernyőkép a QR-kódról."
+        }
+      }
+    },
+    "error": {
+      "missing_input": "Illeszd be a QR szövegét vagy tölts fel QR-képet.",
+      "choose_one": "Vagy QR szöveget, vagy QR képet adj meg, ne mindkettőt.",
+      "invalid_share": "A QR adata nem támogatott HeyLight Share Device tartalom: {reason}",
+      "invalid_qr": "A feltöltött képből nem sikerült HeyLight QR-kódot kiolvasni: {reason}"
+    },
+    "abort": {
+      "already_configured": "Ez a HeyLight mesh már konfigurálva van."
+    }
+  }
+}
