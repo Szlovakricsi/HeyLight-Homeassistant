@@ -26,9 +26,14 @@ async def async_get_config_entry_diagnostics(
             "product_type": node.product_type,
             "bulb_count": node.bulb_count,
             "vendor_model": node.has_model(0x02110000),
+            "time_server": node.has_model(0x1200),
+            "time_setup_server": node.has_model(0x1201),
             "scheduler_server": node.has_model(0x1206),
             "scheduler_setup_server": node.has_model(0x1207),
             "timing_supported": timing.supported,
+            "time_supported": timing.time_supported,
+            "clock_synced": timing.clock_synced,
+            "device_time_unix": timing.device_time_unix,
         }
         if timing.loaded:
             node_data["timing"] = {
