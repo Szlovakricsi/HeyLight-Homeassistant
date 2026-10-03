@@ -28,6 +28,7 @@ from .runtime import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_POWER_POLL_INTERVAL = 5
 
 
 def _device_info(coordinator, node) -> DeviceInfo:
@@ -79,7 +80,7 @@ class HeylightLight(LightEntity, RestoreEntity):
         self._coordinator = coordinator
         self._node = node
         self._runtime = runtime
-        self._refresh_task: asyncio.Task | None = None
+        self._power_poll_task: asyncio.Task | None = None
         self._attr_unique_id = (
             f"{coordinator.network.identifier}_{node.unicast:04x}"
         )
@@ -144,12 +145,16 @@ class HeylightLight(LightEntity, RestoreEntity):
         )
 
         self.async_write_ha_state()
-        if self._coordinator.available:
-            self._schedule_refresh()
+        self._ensure_power_poll()
 
     async def async_will_remove_from_hass(self) -> None:
-        if self._refresh_task is not None:
-            self._refresh_task.cancel()
+        if self._power_poll_task is not None:
+            self._power_poll_task.cancel()
+            try:
+                await self._power_poll_task
+            except asyncio.CancelledError:
+                pass
+            self._power_poll_task = None
         await super().async_will_remove_from_hass()
 
     @callback
@@ -161,18 +166,39 @@ class HeylightLight(LightEntity, RestoreEntity):
     def _availability_changed(self) -> None:
         if self.hass is not None:
             self.async_write_ha_state()
-        if self._coordinator.available:
-            self._schedule_refresh()
+        self._ensure_power_poll()
 
-    def _schedule_refresh(self) -> None:
+    def _ensure_power_poll(self) -> None:
+        """Keep a lightweight power poll running while the entity exists.
+
+        The light can change state without a Home Assistant service call, for
+        example when its device-side Bluetooth Mesh Scheduler fires or the
+        official app controls it. PID 0xFAC8 does not reliably publish an
+        unsolicited vendor power status for those changes, so query E1/E3.
+        """
         if self.hass is None:
             return
-        if self._refresh_task is not None and not self._refresh_task.done():
+        if self._power_poll_task is not None and not self._power_poll_task.done():
             return
-        self._refresh_task = self.hass.async_create_background_task(
-            self.async_refresh_state(),
-            f"HeyLight refresh {self._node.unicast:04x}",
+        self._power_poll_task = self.hass.async_create_background_task(
+            self._power_poll_loop(),
+            f"HeyLight power poll {self._node.unicast:04x}",
         )
+
+    async def _power_poll_loop(self) -> None:
+        """Refresh physical power state periodically.
+
+        Five seconds keeps scheduler-driven state changes visible quickly in
+        Home Assistant without continuously reconnecting: requests only run
+        while the held Mesh Proxy connection is available.
+        """
+        try:
+            while True:
+                if self._coordinator.available:
+                    await self.async_refresh_state()
+                await asyncio.sleep(_POWER_POLL_INTERVAL)
+        except asyncio.CancelledError:
+            raise
 
     async def async_refresh_state(self) -> None:
         try:
@@ -181,10 +207,15 @@ class HeylightLight(LightEntity, RestoreEntity):
                     self._node.unicast
                 )
             )
-        except Exception:
+        except Exception as exc:
+            _LOGGER.debug(
+                "Unable to refresh HeyLight power state for 0x%04x: %s",
+                self._node.unicast,
+                exc,
+            )
             return
 
-        if state is not None:
+        if state is not None and state != self._runtime.is_on:
             self._runtime.is_on = state
             self._runtime.notify()
 
