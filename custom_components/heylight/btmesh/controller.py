@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import logging
 
 from ..const import HEYLIGHT_COMPANY_ID, HEYLIGHT_PRODUCT_CATEGORY
@@ -19,9 +20,23 @@ _POWER_STATUS = vendor_opcode(0xE3, HEYLIGHT_COMPANY_ID)
 _SCENE_SET = vendor_opcode(0xE6, HEYLIGHT_COMPANY_ID)
 _BRIGHTNESS_SET = vendor_opcode(0xF3, HEYLIGHT_COMPANY_ID)
 
+# Bluetooth Mesh Scheduler opcodes (Mesh Model specification).
+_SCHEDULER_ACTION_GET = 0x8248
+_SCHEDULER_ACTION_SET = 0x60
+_SCHEDULER_ACTION_STATUS = 0x5F
+
+SCHEDULER_ACTION_OFF = 0x0
+SCHEDULER_ACTION_ON = 0x1
+SCHEDULER_ACTION_SCENE = 0x2
+SCHEDULER_ACTION_NONE = 0xF
+
+SCHEDULER_YEAR_ANY = 0x64
+SCHEDULER_MONTH_ALL = 0x0FFF
+SCHEDULER_DAY_ANY = 0x00
+SCHEDULER_DAY_OF_WEEK_ALL = 0x7F
+
 # Heylight 2.3.18 uses three different E6 payload layouts depending on
-# the scene. Scene 3 (Flick Around) is promoted to the multi-colour payload
-# on PID 0xFAC8 / firmware 51 so HA can send up to three user colours.
+# the scene.
 _SCENE_SINGLE_COLOR = frozenset({0, 1, 2, 4, 5, 6, 10, 14, 15, 16, 17, 18, 24, 33, 37, 39, 49, 50, 51})
 _SCENE_MULTI_COLOR = frozenset({3, 7, 8, 9, 11, 12, 19, 20, 22, 23, 25, 27, 28, 29, 30, 31, 32, 35, 36, 38, 40, 41, 43, 44, 45, 52, 53})
 _SCENE_DUAL_COLOR = frozenset({13, 21, 26, 34, 42})
@@ -54,6 +69,58 @@ _GAMMA = (
     203,205,207,210,212,214,216,218,220,223,225,227,229,232,234,236,239,241,
     243,246,248,250,253,255
 )
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulerEntry:
+    """Decoded Bluetooth Mesh Schedule Register entry."""
+
+    index: int
+    year: int
+    month: int
+    day: int
+    hour: int
+    minute: int
+    second: int
+    day_of_week: int
+    action: int
+    transition_time: int
+    scene_number: int
+
+
+def _pack_scheduler_entry(entry: SchedulerEntry) -> bytes:
+    """Pack Scheduler Action Set parameters (80 bits, LSB-first fields)."""
+    value = 0
+    shift = 0
+    for field, width in (
+        (entry.index, 4),
+        (entry.year, 7),
+        (entry.month, 12),
+        (entry.day, 5),
+        (entry.hour, 5),
+        (entry.minute, 6),
+        (entry.second, 6),
+        (entry.day_of_week, 7),
+        (entry.action, 4),
+        (entry.transition_time, 8),
+        (entry.scene_number, 16),
+    ):
+        value |= (int(field) & ((1 << width) - 1)) << shift
+        shift += width
+    return value.to_bytes(10, "little")
+
+
+def _unpack_scheduler_entry(params: bytes) -> SchedulerEntry | None:
+    """Decode Scheduler Action Status parameters."""
+    if len(params) < 10:
+        return None
+    value = int.from_bytes(params[:10], "little")
+    fields: list[int] = []
+    shift = 0
+    for width in (4, 7, 12, 5, 5, 6, 6, 7, 4, 8, 16):
+        fields.append((value >> shift) & ((1 << width) - 1))
+        shift += width
+    return SchedulerEntry(*fields)
 
 
 class HeylightMeshController:
@@ -91,7 +158,6 @@ class HeylightMeshController:
         self._tx_task = asyncio.create_task(
             self._tx_loop(), name="heylight-mesh-tx"
         )
-        # Accept-list filter and our provisioner source address.
         await self._send_proxy_config(b"\x00\x00")
         await self._send_proxy_config(
             b"\x01" + self._src_addr.to_bytes(2, "big")
@@ -128,17 +194,11 @@ class HeylightMeshController:
     @staticmethod
     def _wire_speed(scene: int, speed: int, bulb_count: int) -> int:
         speed = max(1, min(10, int(speed)))
-
-        # Heylight 2.3.18 firmware-family behavior verified on the tested
-        # PID 0xFAC8 / firmware "51" string. The product advertises 200
-        # addressable positions in its Share Device payload.
         if scene in _SPECIAL_SPEED_SCENES:
             delay = 11 - speed
         elif bulb_count == 200:
             delay = _SPEED_DELAY_200[speed]
         else:
-            # Safe fallback: the same table used by the verified 200-light
-            # product, rather than transmitting the UI value verbatim.
             delay = _SPEED_DELAY_200[speed]
         return delay & 0xFF
 
@@ -192,6 +252,43 @@ class HeylightMeshController:
             return None
         return bool(msg.params[0])
 
+    async def get_scheduler_entry(
+        self, unicast: int, index: int, *, timeout: float = 5.0
+    ) -> SchedulerEntry | None:
+        """Read one Scheduler register entry."""
+        if not 0 <= index <= 15:
+            raise ValueError("scheduler index must be 0..15")
+        try:
+            msg = await self._node.request(
+                unicast,
+                encode_opcode(_SCHEDULER_ACTION_GET) + bytes([index]),
+                _SCHEDULER_ACTION_STATUS,
+                timeout=timeout,
+            )
+        except TimeoutError:
+            return None
+        return _unpack_scheduler_entry(msg.params)
+
+    async def set_scheduler_entry(
+        self,
+        unicast: int,
+        entry: SchedulerEntry,
+        *,
+        timeout: float = 5.0,
+    ) -> SchedulerEntry | None:
+        """Write one Scheduler register entry and return device readback."""
+        payload = encode_opcode(_SCHEDULER_ACTION_SET) + _pack_scheduler_entry(entry)
+        try:
+            msg = await self._node.request(
+                unicast,
+                payload,
+                _SCHEDULER_ACTION_STATUS,
+                timeout=timeout,
+            )
+        except TimeoutError:
+            return None
+        return _unpack_scheduler_entry(msg.params)
+
     async def set_brightness(
         self,
         unicast: int,
@@ -199,7 +296,6 @@ class HeylightMeshController:
         *,
         product_category: int = HEYLIGHT_PRODUCT_CATEGORY,
     ) -> None:
-        """Set global output brightness through Heylight vendor opcode F3."""
         value = max(0, min(255, int(brightness)))
         payload = (
             encode_opcode(_BRIGHTNESS_SET)
@@ -210,7 +306,6 @@ class HeylightMeshController:
 
     @staticmethod
     def scene_color_slots(scene: int) -> int:
-        """Return how many independent color slots the APK supports."""
         if scene in _SCENE_DUAL_COLOR:
             return 2
         if scene in _SCENE_MULTI_COLOR:
@@ -226,7 +321,6 @@ class HeylightMeshController:
         speed: int,
         bulb_count: int = 200,
     ) -> None:
-        """Send E6 using the scene-specific Heylight payload layout."""
         if not colors:
             raise ValueError("at least one scene color is required")
 
@@ -267,4 +361,3 @@ class HeylightMeshController:
             encode_opcode(_SCENE_SET) + bytes(params),
         )
         await self.flush()
-
