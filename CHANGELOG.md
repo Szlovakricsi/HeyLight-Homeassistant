@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.4.4
+## v0.4.5
 
 Improves state synchronization for device-side timing and refreshes integration branding.
 
@@ -8,7 +8,8 @@ Improves state synchronization for device-side timing and refreshes integration 
 
 - the main light power state is now queried from the physical device every 5 seconds while the Mesh Proxy connection is available
 - scheduler-triggered, official-app, or other external power changes now update the Home Assistant light entity automatically
-- added a rectangular integration logo intended for the Home Assistant integration header
+- replaced the integration logo with a rectangular brand asset
+- added Retina and dark-mode logo variants so Home Assistant can use the correct asset on high-density dark-mode displays
 
 ## v0.4.0
 
