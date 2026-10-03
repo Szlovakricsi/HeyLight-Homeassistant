@@ -10,7 +10,12 @@ from .const import CONF_SHARE_JSON, DOMAIN
 from .coordinator import HeylightCoordinator
 from .share import parse_share_text
 
-PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.NUMBER]
+PLATFORMS: list[Platform] = [
+    Platform.LIGHT,
+    Platform.NUMBER,
+    Platform.SWITCH,
+    Platform.TIME,
+]
 
 type HeylightConfigEntry = ConfigEntry[HeylightCoordinator]
 
