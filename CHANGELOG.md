@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.4.0
+
+Adds device-side timing support matching the official HeyLight 2.3.18 Timing screen.
+
+### Added
+
+- `Timing` Configuration switch
+- `Timing repeat` Configuration switch
+- `Turn on time` Configuration time entity
+- `Turn off time` Configuration time entity
+- direct Bluetooth Mesh Scheduler Action Get/Set support
+- scheduler capability details in diagnostics
+- protocol documentation for Scheduler Server `0x1206` / Scheduler Setup Server `0x1207`
+
+### Timing behaviour
+
+- Scheduler slot 1 controls Turn On
+- Scheduler slot 2 controls Turn Off
+- Timing OFF writes `No Action` to both slots
+- Repeat ON uses all seven weekdays
+- Repeat OFF mirrors the HeyLight app by using the current month/day
+- settings are stored in the light string itself, not as Home Assistant automations
+
 ## v0.3.0
 
 First beta release with the currently verified feature set for HeyLight PID `0xFAC8`, firmware `51`.
