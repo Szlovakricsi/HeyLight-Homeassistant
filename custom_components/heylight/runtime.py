@@ -17,9 +17,8 @@ DEFAULT_COLORS: tuple[tuple[int, int, int], ...] = (
     (0, 0, 255),
 )
 
-# Scene IDs reviewed against Heylight 2.3.18 btsigTelink scene handling and
-# verified on PID 0xFAC8 / firmware 51. Scene 3 is the working "flick around"
-# variant on the tested string.
+# Scene IDs reviewed against Heylight 2.3.18 and then verified on the
+# PID 0xFAC8 / firmware 51 light string.
 EFFECT_TO_SCENE: dict[str, int] = {
     "normal": 0,
     "flick": 1,
@@ -38,11 +37,18 @@ EFFECT_TO_SCENE: dict[str, int] = {
     "random breath": 21,
     "wave down": 22,
     "flag": 23,
-    "heap up": 24,
+    "head up": 24,
     "vertical wave": 25,
     "snake": 26,
     "wave up": 27,
 }
+
+# Physical testing on PID 0xFAC8 / firmware 51 established this capability
+# matrix. Scenes 5 and 10 have a fixed internal colour in the Heylight app;
+# their scene table contains #ffffff and does not expose a colour editor.
+_NO_USER_COLOR_SCENES = frozenset({5, 10})
+_DUAL_COLOR_SCENES = frozenset({13, 21, 26})
+_MULTI_COLOR_SCENES = frozenset({7, 8, 9, 11, 12, 19, 22, 23, 25, 27})
 
 
 def is_supported_node(node) -> bool:
@@ -72,15 +78,19 @@ class HeylightRuntime:
         return EFFECT_TO_SCENE[self.effect]
 
     @property
+    def user_color_available(self) -> bool:
+        """Whether the active effect exposes a user-selectable colour."""
+        return self.scene not in _NO_USER_COLOR_SCENES
+
+    @property
     def palette_color_slots(self) -> int:
-        """Number of independent colours supported by the active scene."""
+        """Number of independent user-selectable colours for the scene."""
         scene = self.scene
-        if scene in {13, 21, 26}:
+        if scene in _NO_USER_COLOR_SCENES:
+            return 0
+        if scene in _DUAL_COLOR_SCENES:
             return 2
-        # Flick Around (scene 3) is intentionally treated as a 3-colour scene
-        # for this firmware: physical testing confirmed scene 3 itself works,
-        # and the user-facing HeyLight effect supports a multi-colour palette.
-        if scene in {3, 7, 8, 9, 11, 12, 19, 22, 23, 25, 27}:
+        if scene in _MULTI_COLOR_SCENES:
             return 3
         return 1
 
@@ -94,15 +104,7 @@ class HeylightRuntime:
     def _brightness_scaled(
         self, rgb: tuple[int, int, int]
     ) -> tuple[int, int, int]:
-        """Scale RGB value like lowering HSV V, without changing saved color.
-
-        Heylight's standalone F3 brightness command is accepted by the app
-        protocol but PID 0xFAC8 firmware 51 did not physically react to it.
-        Scene colours do react, so brightness is applied to the E6 colour
-        payload instead. Multiplying all RGB channels by the same factor is
-        mathematically equivalent to scaling HSV value while preserving hue
-        and saturation.
-        """
+        """Scale RGB value like lowering HSV V without changing saved colour."""
         factor = max(1, min(255, int(self.brightness))) / 255.0
         return tuple(
             max(0, min(255, int(round(channel * factor))))
@@ -110,6 +112,17 @@ class HeylightRuntime:
         )
 
     def active_colors(self) -> list[tuple[int, int, int]]:
+        """Return the colours actually transmitted in the E6 scene payload."""
+        scene = self.scene
+
+        # randomColor (5) and fallRainbow (10) are fixed-colour effects in the
+        # APK. Both use a hidden #ffffff colourList entry. Sending the previous
+        # user-selected RGB here can make fallRainbow fail on firmware 51, so
+        # always transmit the app's fixed white while still applying HA
+        # brightness to that value.
+        if scene in _NO_USER_COLOR_SCENES:
+            return [self._brightness_scaled((255, 255, 255))]
+
         slots = self.palette_color_slots
         result = [self.colors[0]]
         for index in (1, 2):
@@ -118,8 +131,8 @@ class HeylightRuntime:
             if self.color_enabled[index]:
                 result.append(self.colors[index])
 
-        # Keep the original UI colours untouched and scale only the values
-        # transmitted to E6. This lets 100% restore the exact chosen colour.
+        # Keep the original UI colours untouched and scale only transmitted
+        # E6 values. Returning to 100% therefore restores the exact colour.
         return [self._brightness_scaled(color) for color in result[:slots]]
 
     def add_listener(
