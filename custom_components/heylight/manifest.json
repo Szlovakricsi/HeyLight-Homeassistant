@@ -7,11 +7,13 @@
   "config_flow": true,
   "dependencies": [
     "bluetooth",
-    "qrcode"
+    "file_upload"
   ],
   "documentation": "https://github.com/Szlovakricsi/HeyLight-Homeassistant",
   "issue_tracker": "https://github.com/Szlovakricsi/HeyLight-Homeassistant/issues",
   "iot_class": "local_push",
-  "requirements": [],
-  "version": "0.1.1"
+  "requirements": [
+    "pyzbar==0.1.9"
+  ],
+  "version": "0.1.2"
 }
