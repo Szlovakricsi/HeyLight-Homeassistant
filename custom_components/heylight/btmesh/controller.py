@@ -20,9 +20,10 @@ _SCENE_SET = vendor_opcode(0xE6, HEYLIGHT_COMPANY_ID)
 _BRIGHTNESS_SET = vendor_opcode(0xF3, HEYLIGHT_COMPANY_ID)
 
 # Heylight 2.3.18 uses three different E6 payload layouts depending on
-# the scene. These sets are copied from btsigTelink.changeScene().
-_SCENE_SINGLE_COLOR = frozenset({0, 1, 2, 3, 4, 5, 6, 10, 14, 15, 16, 17, 18, 24, 33, 37, 39, 49, 50, 51})
-_SCENE_MULTI_COLOR = frozenset({7, 8, 9, 11, 12, 19, 20, 22, 23, 25, 27, 28, 29, 30, 31, 32, 35, 36, 38, 40, 41, 43, 44, 45, 52, 53})
+# the scene. Scene 3 (Flick Around) is promoted to the multi-colour payload
+# on PID 0xFAC8 / firmware 51 so HA can send up to three user colours.
+_SCENE_SINGLE_COLOR = frozenset({0, 1, 2, 4, 5, 6, 10, 14, 15, 16, 17, 18, 24, 33, 37, 39, 49, 50, 51})
+_SCENE_MULTI_COLOR = frozenset({3, 7, 8, 9, 11, 12, 19, 20, 22, 23, 25, 27, 28, 29, 30, 31, 32, 35, 36, 38, 40, 41, 43, 44, 45, 52, 53})
 _SCENE_DUAL_COLOR = frozenset({13, 21, 26, 34, 42})
 
 _SPECIAL_SPEED_SCENES = frozenset({1, 3, 5, 8, 9})
@@ -225,7 +226,7 @@ class HeylightMeshController:
         speed: int,
         bulb_count: int = 200,
     ) -> None:
-        """Send E6 using the exact scene-specific Heylight payload layout."""
+        """Send E6 using the scene-specific Heylight payload layout."""
         if not colors:
             raise ValueError("at least one scene color is required")
 
