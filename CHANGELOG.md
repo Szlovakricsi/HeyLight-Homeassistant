@@ -1,17 +1,14 @@
 # Changelog
 
-## v0.4.1
+## v0.4.3
 
-Fixes device-side timing by synchronizing the Bluetooth Mesh Time state before writing Scheduler entries.
+Improves state synchronization for device-side timing and refreshes integration branding.
 
-### Fixed
+### Changed
 
-- reproduces the HeyLight app's clock synchronization step before programming timers
-- writes the local Home Assistant time, time-zone offset and TAI-UTC delta to the Time Setup Server (`0x1201`)
-- reads the Time Server (`0x1200`) state for diagnostics
-- exposes `clock_synced` and `device_time_unix` in diagnostics
-
-The official app periodically checks the device clock and calls `setTime(...)` whenever it differs from the phone by more than 60 seconds. Without this step, valid Scheduler entries can be stored but never fire because the light string does not know the current time.
+- the main light power state is now queried from the physical device every 5 seconds while the Mesh Proxy connection is available
+- scheduler-triggered, official-app, or other external power changes now update the Home Assistant light entity automatically
+- added a rectangular integration logo intended for the Home Assistant integration header
 
 ## v0.4.0
 
