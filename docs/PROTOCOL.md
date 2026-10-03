@@ -34,20 +34,13 @@ The opaque node `i` field contains composition information, including company/pr
 
 Provisioned devices advertise Bluetooth Mesh Proxy service UUID `0x1828`.
 
-The integration accepts either:
-
-1. a Mesh Network ID advertisement matching the imported network, or
-2. a valid Mesh Node Identity advertisement.
-
-Node Identity is cryptographically checked from the imported NetKey and node unicast address rather than being accepted only from a remembered MAC address.
+The integration accepts either the correct Mesh Network ID advertisement or a valid Mesh Node Identity advertisement. Node Identity is cryptographically checked from the imported NetKey and node unicast address.
 
 ## Vendor model
 
-The physical LEDs on the tested product are controlled by Telink vendor model:
+The physical LEDs on the tested product are controlled by Telink vendor model `0x0211:0x0000`.
 
-`0x0211:0x0000`
-
-The standard SIG lighting models are present but do not provide the actual physical effect control used by the HeyLight app.
+The standard SIG lighting models are present but do not provide the physical effect control used by the HeyLight app.
 
 ## Verified power opcodes
 
@@ -57,29 +50,13 @@ The standard SIG lighting models are present but do not provide the actual physi
 | Power Get | `E1 11 02` |
 | Power Status | `E3 11 02` |
 
-Power Set parameters are:
-
-```text
-[power, productCategory]
-```
-
-where power is `0` or `1` and the tested product category byte is `0xFF`.
+Power Set parameters are `[power, productCategory]`, where power is `0` or `1` and the tested product category byte is `0xFF`.
 
 ## Scene/effect opcode
 
-Scene/effect Set uses:
+Scene/effect Set uses `E6 11 02`.
 
-```text
-E6 11 02
-```
-
-The payload starts with:
-
-```text
-[scene, wireSpeed, ...scene-specific colour data..., productCategory]
-```
-
-HeyLight 2.3.18 uses different colour payload layouts depending on the scene.
+The payload starts with `[scene, wireSpeed, ...scene-specific colour data..., productCategory]`.
 
 ### Single-colour layout
 
@@ -105,8 +82,6 @@ HeyLight 2.3.18 uses different colour payload layouts depending on the scene.
  0, R3, G3, B3,
  productCategory]
 ```
-
-The integration currently supports up to three user palette colours because that matches the tested HeyLight UI behaviour.
 
 ## Verified effect map for PID 0xFAC8 / firmware 51
 
@@ -136,23 +111,9 @@ The integration currently supports up to three user palette colours because that
 
 ### Rainbow scene detail
 
-The generic HeyLight scene table contains `fallRainbow` at scene `10`, but scene 10 does not visibly activate on the tested firmware.
-
-The tested product's working rainbow mode is:
-
-```text
-scene 45 = themeRainbowFixedcolor
-```
-
-The integration exposes this working mode under the user-facing name `fall rainbow` and sends the fixed palette:
-
-```text
-red, green, blue
-```
+The generic HeyLight scene table contains `fallRainbow` at scene `10`, but scene 10 does not visibly activate on the tested firmware. The working product-specific rainbow mode is scene `45` (`themeRainbowFixedcolor`), using a fixed red/green/blue palette.
 
 ## Effect speed conversion
-
-HeyLight UI speed is 1–10 but the wire value is not always the same number.
 
 For scenes `{1, 3, 5, 8, 9}`:
 
@@ -180,37 +141,75 @@ For the tested 200-position product, other supported scenes use:
 Before RGB values are sent to the controller, the integration mirrors HeyLight's observed colour processing:
 
 1. 256-entry gamma lookup
-2. white-balance multipliers approximately:
-   - red: `1.0`
-   - green: `0.85`
-   - blue: `0.40`
+2. white-balance multipliers approximately red `1.0`, green `0.85`, blue `0.40`
 3. special pure-blue handling for most scenes
-
-This processing is necessary for the physical output to resemble the official app.
 
 ## Brightness behaviour
 
-The APK contains a vendor brightness command using opcode `0x0211F3`, but the tested PID `0xFAC8` / firmware `51` string does not visibly respond to it.
+The APK contains vendor brightness opcode `0x0211F3`, but the tested PID `0xFAC8` / firmware `51` string does not visibly respond to it. Home Assistant brightness is therefore implemented by scaling the RGB values used in the E6 scene payload while preserving the original Home Assistant colour state.
 
-Therefore Home Assistant brightness is implemented by scaling the RGB values used in the E6 scene payload.
+## Device-side timing / Bluetooth Mesh Scheduler
 
-The original Home Assistant colour is retained in state, so changing brightness does not permanently alter hue/saturation and returning to 100% restores the original colour.
+The HeyLight 2.3.18 APK's Timing screen uses the standard Bluetooth Mesh Scheduler models rather than a HeyLight vendor command. The tested node composition includes:
+
+- Scheduler Server `0x1206`
+- Scheduler Setup Server `0x1207`
+
+The app exposes exactly four controls:
+
+- Timing switch
+- Repeat
+- Turn on time
+- Turn off time
+
+The app uses two schedule entries:
+
+- entry/index `1`: turn on
+- entry/index `2`: turn off
+
+Scheduler message opcodes used by the integration are:
+
+| Message | Opcode |
+|---|---|
+| Scheduler Action Get | `0x8248` |
+| Scheduler Action Set | `0x60` |
+| Scheduler Action Status | `0x5F` |
+
+The 80-bit Scheduler Action payload is packed in Bluetooth Mesh field order:
+
+```text
+Index(4)
+Year(7)
+Month(12)
+Day(5)
+Hour(5)
+Minute(6)
+Second(6)
+DayOfWeek(7)
+Action(4)
+TransitionTime(8)
+SceneNumber(16)
+```
+
+HeyLight 2.3.18 uses these values for the tested Timing UI:
+
+- `Year = 0x64` (any year)
+- `Second = 0`
+- `TransitionTime = 0`
+- `SceneNumber = 0`
+- Timing ON: action `1` for entry 1 and action `0` for entry 2
+- Timing OFF: action `0xF` (No Action) for both entries
+- Repeat ON: month mask `0xFFF`, day `0`, weekday mask `0x7F`
+- Repeat OFF: current month bit only, current day, weekday mask `0`
+
+This intentionally mirrors the app's packet construction instead of replacing it with Home Assistant automations. The resulting Configuration entities write directly to the light string's own scheduler.
 
 ## Connection behaviour
 
 The integration keeps one GATT Mesh Proxy connection where possible. If it drops, it retries automatically and reconnects when the proxy can be discovered again.
 
-A device may expose only one Mesh Proxy GATT connection at a time. This can prevent the official HeyLight app from connecting while Home Assistant is holding the proxy connection.
+A device may expose only one Mesh Proxy GATT connection at a time. This can prevent the official HeyLight app from connecting while Home Assistant holds the proxy connection.
 
 ## Security
 
-The QR Share Device payload contains sensitive Bluetooth Mesh credentials.
-
-Do not publish real values for:
-
-- NetKey / `meshPwd`
-- AppKey / `meshName`
-- DeviceKey / node `k`
-- full Share Device QR JSON
-
-The integration's diagnostics intentionally omit these secrets.
+The QR Share Device payload contains sensitive Bluetooth Mesh credentials. Do not publish real NetKey, AppKey, DeviceKey or Share Device QR JSON values. Diagnostics intentionally omit these secrets.
