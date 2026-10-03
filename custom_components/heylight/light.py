@@ -194,9 +194,14 @@ class HeylightLight(LightEntity, RestoreEntity):
         brightness = kwargs.get(ATTR_BRIGHTNESS)
 
         # The device does not reliably publish its current scene. If HA
-        # explicitly supplies an effect, always resend E6 even when it equals
-        # the restored state; this is important for selecting "normal".
-        scene_requested = effect is not None or rgb is not None
+        # explicitly supplies an effect, colour or brightness, always resend
+        # E6 even when it equals restored state. This is especially important
+        # for selecting "normal" and for brightness on PID 0xFAC8 firmware 51.
+        scene_requested = (
+            effect is not None
+            or rgb is not None
+            or brightness is not None
+        )
 
         if effect is not None:
             if effect not in EFFECT_TO_SCENE:
@@ -225,16 +230,11 @@ class HeylightLight(LightEntity, RestoreEntity):
             self._runtime.is_on = result
             self._runtime.notify()
 
+        # Brightness is applied by runtime.active_colors() to the E6 scene
+        # colours. The standalone F3 command exists in the APK but did not
+        # physically affect this tested PID/firmware, so it is not used here.
         if scene_requested:
             await self._runtime.apply_scene()
-
-        if brightness is not None:
-            await self._coordinator._run_connected(
-                lambda controller: controller.set_brightness(
-                    self._node.unicast,
-                    self._runtime.brightness,
-                )
-            )
 
     async def async_turn_off(self, **kwargs) -> None:
         self._runtime.is_on = False
