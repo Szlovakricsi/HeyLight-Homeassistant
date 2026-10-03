@@ -12,8 +12,8 @@ from .proxy_pdu import Reassembler, segment
 
 _LOGGER = logging.getLogger(__name__)
 
-ATT_HEADER_LEN = 3
 DEFAULT_MAX_FRAME = 20
+START_NOTIFY_TIMEOUT = 1.0
 
 
 class GattProxyBearer:
@@ -24,35 +24,57 @@ class GattProxyBearer:
         self._reassembler = Reassembler()
         self._on_message: Callable[[int, bytes], None] | None = None
         self._started = False
+        self._subscribe_task: asyncio.Task | None = None
+        self.failure: BaseException | None = None
 
     @property
     def max_frame(self) -> int:
-        try:
-            mtu = int(self._client.mtu_size)
-        except Exception:
-            mtu = 0
-        if mtu - ATT_HEADER_LEN < 2:
-            return DEFAULT_MAX_FRAME
-        return mtu - ATT_HEADER_LEN
+        """Use the minimum ATT payload and avoid BlueZ's mtu_size warning."""
+        return DEFAULT_MAX_FRAME
 
     async def start(
         self, on_message: Callable[[int, bytes], None]
     ) -> None:
         self._on_message = on_message
-        try:
-            async with asyncio.timeout(5):
-                await self._client.start_notify(
-                    PROXY_DATA_OUT, self._handle_notify
-                )
-        except TimeoutError:
-            # Some proxy backends start notifications before the await resolves.
-            _LOGGER.warning(
-                "HeyLight proxy notification subscription did not confirm "
-                "within 5 seconds; continuing"
+        task = asyncio.ensure_future(
+            self._client.start_notify(
+                PROXY_DATA_OUT, self._handle_notify
             )
+        )
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(task), START_NOTIFY_TIMEOUT
+            )
+        except TimeoutError:
+            task.add_done_callback(self._on_late_subscribe)
+            self._subscribe_task = task
+            _LOGGER.debug(
+                "HeyLight start_notify not confirmed after %.1fs; "
+                "leaving subscription task running",
+                START_NOTIFY_TIMEOUT,
+            )
+        except Exception:
+            task.cancel()
+            raise
         self._started = True
 
+    def _on_late_subscribe(self, task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            self.failure = exc
+            _LOGGER.warning(
+                "HeyLight Mesh Proxy notification subscription failed: %s",
+                exc,
+            )
+
     async def stop(self) -> None:
+        pending, self._subscribe_task = self._subscribe_task, None
+        if pending is not None and not pending.done():
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+
         if not self._started:
             return
         self._started = False
@@ -62,6 +84,13 @@ class GattProxyBearer:
             _LOGGER.debug("stop_notify failed", exc_info=True)
 
     async def send(self, msg_type: int, payload: bytes) -> None:
+        if self.failure is not None:
+            raise RuntimeError(
+                f"Mesh Proxy notification subscription failed: {self.failure}"
+            )
+        if not bool(getattr(self._client, "is_connected", True)):
+            raise ConnectionError("HeyLight Bluetooth link is disconnected")
+
         for frame in segment(msg_type, payload, self.max_frame):
             await self._client.write_gatt_char(
                 PROXY_DATA_IN, frame, response=False

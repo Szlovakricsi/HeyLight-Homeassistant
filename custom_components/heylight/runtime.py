@@ -10,6 +10,7 @@ from .const import HEYLIGHT_COMPANY_ID, HEYLIGHT_VENDOR_MODEL
 
 DEFAULT_EFFECT = "normal"
 DEFAULT_SPEED = 6
+DEFAULT_BRIGHTNESS = 255
 DEFAULT_COLORS: tuple[tuple[int, int, int], ...] = (
     (255, 255, 255),
     (255, 0, 0),
@@ -57,6 +58,7 @@ class HeylightRuntime:
         self.is_on: bool | None = None
         self.effect = DEFAULT_EFFECT
         self.speed = DEFAULT_SPEED
+        self.brightness = DEFAULT_BRIGHTNESS
         self.colors = list(DEFAULT_COLORS)
         self.color_enabled = [True, False, False]
         self._listeners: list[Callable[[], None]] = []
@@ -67,17 +69,31 @@ class HeylightRuntime:
         return EFFECT_TO_SCENE[self.effect]
 
     @property
+    def palette_color_slots(self) -> int:
+        """Number of independent colours supported by the active scene."""
+        scene = self.scene
+        if scene in {13, 21, 26}:
+            return 2
+        if scene in {7, 8, 9, 11, 12, 19, 22, 23, 25, 27}:
+            return 3
+        return 1
+
+    def palette_slot_available(self, index: int) -> bool:
+        return index < self.palette_color_slots
+
+    @property
     def palette_controls_available(self) -> bool:
-        return self.effect != "normal"
+        return self.palette_color_slots > 1
 
     def active_colors(self) -> list[tuple[int, int, int]]:
-        if self.effect == "normal":
-            return [self.colors[0]]
+        slots = self.palette_color_slots
         result = [self.colors[0]]
         for index in (1, 2):
+            if index >= slots:
+                break
             if self.color_enabled[index]:
                 result.append(self.colors[index])
-        return result[:3]
+        return result[:slots]
 
     def add_listener(
         self, listener: Callable[[], None]

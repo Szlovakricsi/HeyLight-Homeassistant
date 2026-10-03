@@ -23,7 +23,7 @@ _LOGGER = logging.getLogger(__name__)
 
 STORE_VERSION = 1
 SEQ_SAFETY_MARGIN = 32
-RECONNECT_SECONDS = 15
+RECONNECT_SECONDS = 5
 
 
 class HeylightCoordinator:
@@ -46,11 +46,16 @@ class HeylightCoordinator:
         self._controller: HeylightMeshController | None = None
         self._listeners: list[Callable[[], None]] = []
         self._connect_lock = asyncio.Lock()
+        self._disconnect_lock = asyncio.Lock()
         self._command_lock = asyncio.Lock()
         self._wake = asyncio.Event()
         self._background_task: asyncio.Task | None = None
         self._unregister_bluetooth: Callable[[], None] | None = None
         self._stopping = False
+        self.reconnect_attempts = 0
+        self.successful_connections = 0
+        self.last_connection_error: str | None = None
+        self.last_disconnect_reason: str | None = None
 
         self._store: Store = Store(
             hass, STORE_VERSION, f"heylight_seq_{entry_id}"
@@ -68,6 +73,8 @@ class HeylightCoordinator:
         self._unregister_bluetooth = async_register_proxy_callback(
             self.hass,
             self.network.network_id,
+            self.network.net_key,
+            tuple(node.unicast for node in self.network.nodes),
             self.network.proxy_macs,
             self._proxy_seen,
         )
@@ -115,12 +122,36 @@ class HeylightCoordinator:
 
     async def _connection_loop(self) -> None:
         while True:
+            if self._controller is not None:
+                client_connected = bool(
+                    self._client is not None
+                    and getattr(self._client, "is_connected", False)
+                )
+                bearer_failed = bool(
+                    getattr(
+                        getattr(self._controller, "_bearer", None),
+                        "failure",
+                        None,
+                    )
+                )
+                if not client_connected or bearer_failed:
+                    self.last_disconnect_reason = (
+                        "link check failed"
+                        if not client_connected
+                        else "notification subscription failed"
+                    )
+                    await self._disconnect()
+
             if self._controller is None:
+                self.reconnect_attempts += 1
                 try:
                     await self._ensure_connected()
-                except Exception:
+                except Exception as exc:
+                    self.last_connection_error = str(exc)
                     _LOGGER.debug(
-                        "HeyLight reconnect attempt failed", exc_info=True
+                        "HeyLight reconnect attempt failed: %s",
+                        exc,
+                        exc_info=True,
                     )
 
             self._wake.clear()
@@ -142,6 +173,8 @@ class HeylightCoordinator:
             address = find_proxy_address(
                 self.hass,
                 self.network.network_id,
+                self.network.net_key,
+                tuple(node.unicast for node in self.network.nodes),
                 self.network.proxy_macs,
             )
             if address is None:
@@ -174,6 +207,9 @@ class HeylightCoordinator:
             self.connected_address = address
             self._seq = controller.seq
             self.available = True
+            self.successful_connections += 1
+            self.last_connection_error = None
+            self.last_disconnect_reason = None
             self._notify()
             await self._save_seq()
 
@@ -196,30 +232,38 @@ class HeylightCoordinator:
     def _schedule_drop(self) -> None:
         if self._stopping:
             return
-        self.hass.async_create_task(self._disconnect())
+        self.last_disconnect_reason = "Bleak disconnected callback"
+        self.hass.async_create_background_task(
+            self._disconnect(),
+            f"HeyLight disconnect {self.network.identifier}",
+        )
         self._wake.set()
 
     async def _disconnect(self) -> None:
-        controller, self._controller = self._controller, None
-        client, self._client = self._client, None
-        self.connected_address = None
+        async with self._disconnect_lock:
+            controller, self._controller = self._controller, None
+            client, self._client = self._client, None
+            self.connected_address = None
 
-        if controller is not None:
-            self._seq = controller.seq
-            try:
-                await controller.stop()
-            except Exception:
-                _LOGGER.debug("controller stop failed", exc_info=True)
+            if controller is not None:
+                self._seq = controller.seq
+                try:
+                    await controller.stop()
+                except Exception:
+                    _LOGGER.debug("controller stop failed", exc_info=True)
 
-        if client is not None:
-            try:
-                await client.disconnect()
-            except Exception:
-                _LOGGER.debug("Bluetooth disconnect failed", exc_info=True)
+            if client is not None:
+                try:
+                    if getattr(client, "is_connected", False):
+                        await client.disconnect()
+                except Exception:
+                    _LOGGER.debug(
+                        "Bluetooth disconnect failed", exc_info=True
+                    )
 
-        if self.available:
-            self.available = False
-            self._notify()
+            if self.available:
+                self.available = False
+                self._notify()
 
     async def _save_seq(self) -> None:
         await self._store.async_save({"seq": self._seq})

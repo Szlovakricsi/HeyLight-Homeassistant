@@ -6,6 +6,7 @@ import asyncio
 import logging
 
 from homeassistant.components.light import (
+    ATTR_BRIGHTNESS,
     ATTR_EFFECT,
     ATTR_RGB_COLOR,
     ColorMode,
@@ -97,6 +98,10 @@ class HeylightLight(LightEntity, RestoreEntity):
         return self._runtime.colors[0]
 
     @property
+    def brightness(self) -> int:
+        return self._runtime.brightness
+
+    @property
     def effect(self) -> str:
         return self._runtime.effect
 
@@ -110,6 +115,15 @@ class HeylightLight(LightEntity, RestoreEntity):
                 try:
                     self._runtime.colors[0] = tuple(
                         max(0, min(255, int(v))) for v in rgb
+                    )
+                except (TypeError, ValueError):
+                    pass
+
+            restored_brightness = last.attributes.get(ATTR_BRIGHTNESS)
+            if restored_brightness is not None:
+                try:
+                    self._runtime.brightness = max(
+                        1, min(255, int(restored_brightness))
                     )
                 except (TypeError, ValueError):
                     pass
@@ -177,22 +191,27 @@ class HeylightLight(LightEntity, RestoreEntity):
     async def async_turn_on(self, **kwargs) -> None:
         effect = kwargs.get(ATTR_EFFECT)
         rgb = kwargs.get(ATTR_RGB_COLOR)
-        scene_changed = False
+        brightness = kwargs.get(ATTR_BRIGHTNESS)
+
+        # The device does not reliably publish its current scene. If HA
+        # explicitly supplies an effect, always resend E6 even when it equals
+        # the restored state; this is important for selecting "normal".
+        scene_requested = effect is not None or rgb is not None
 
         if effect is not None:
             if effect not in EFFECT_TO_SCENE:
                 raise ValueError(f"unsupported HeyLight effect: {effect}")
-            if effect != self._runtime.effect:
-                self._runtime.effect = effect
-                scene_changed = True
+            self._runtime.effect = effect
 
         if rgb is not None:
-            new_rgb = tuple(
+            self._runtime.colors[0] = tuple(
                 max(0, min(255, int(v))) for v in rgb
             )
-            if new_rgb != self._runtime.colors[0]:
-                self._runtime.colors[0] = new_rgb
-                scene_changed = True
+
+        if brightness is not None:
+            self._runtime.brightness = max(
+                1, min(255, int(brightness))
+            )
 
         self._runtime.is_on = True
         self._runtime.notify()
@@ -206,8 +225,16 @@ class HeylightLight(LightEntity, RestoreEntity):
             self._runtime.is_on = result
             self._runtime.notify()
 
-        if scene_changed:
+        if scene_requested:
             await self._runtime.apply_scene()
+
+        if brightness is not None:
+            await self._coordinator._run_connected(
+                lambda controller: controller.set_brightness(
+                    self._node.unicast,
+                    self._runtime.brightness,
+                )
+            )
 
     async def async_turn_off(self, **kwargs) -> None:
         self._runtime.is_on = False
@@ -253,7 +280,7 @@ class PaletteColor(LightEntity, RestoreEntity):
     def available(self) -> bool:
         return (
             self._coordinator.available
-            and self._runtime.palette_controls_available
+            and self._runtime.palette_slot_available(self._index)
         )
 
     @property
@@ -302,7 +329,7 @@ class PaletteColor(LightEntity, RestoreEntity):
             self.async_write_ha_state()
 
     async def _apply_if_active(self) -> None:
-        if self._runtime.is_on and self._runtime.effect != "normal":
+        if self._runtime.is_on and self._runtime.palette_slot_available(self._index):
             await self._runtime.apply_scene()
 
     async def async_turn_on(self, **kwargs) -> None:

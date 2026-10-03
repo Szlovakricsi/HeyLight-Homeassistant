@@ -19,6 +19,10 @@ async def async_get_config_entry_diagnostics(
             "network_id": network.identifier,
             "available": coordinator.available,
             "connected_address": coordinator.connected_address,
+            "reconnect_attempts": coordinator.reconnect_attempts,
+            "successful_connections": coordinator.successful_connections,
+            "last_connection_error": coordinator.last_connection_error,
+            "last_disconnect_reason": coordinator.last_disconnect_reason,
         },
         "nodes": [
             {

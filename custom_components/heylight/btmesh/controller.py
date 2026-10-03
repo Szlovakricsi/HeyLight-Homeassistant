@@ -17,6 +17,13 @@ _POWER_SET = vendor_opcode(0xE0, HEYLIGHT_COMPANY_ID)
 _POWER_GET = vendor_opcode(0xE1, HEYLIGHT_COMPANY_ID)
 _POWER_STATUS = vendor_opcode(0xE3, HEYLIGHT_COMPANY_ID)
 _SCENE_SET = vendor_opcode(0xE6, HEYLIGHT_COMPANY_ID)
+_BRIGHTNESS_SET = vendor_opcode(0xF3, HEYLIGHT_COMPANY_ID)
+
+# Heylight 2.3.18 uses three different E6 payload layouts depending on
+# the scene. These sets are copied from btsigTelink.changeScene().
+_SCENE_SINGLE_COLOR = frozenset({0, 1, 2, 3, 4, 5, 6, 10, 14, 15, 16, 17, 18, 24, 33, 37, 39, 49, 50, 51})
+_SCENE_MULTI_COLOR = frozenset({7, 8, 9, 11, 12, 19, 20, 22, 23, 25, 27, 28, 29, 30, 31, 32, 35, 36, 38, 40, 41, 43, 44, 45, 52, 53})
+_SCENE_DUAL_COLOR = frozenset({13, 21, 26, 34, 42})
 
 _SPECIAL_SPEED_SCENES = frozenset({1, 3, 5, 8, 9})
 _SPEED_DELAY_200 = {
@@ -184,6 +191,31 @@ class HeylightMeshController:
             return None
         return bool(msg.params[0])
 
+    async def set_brightness(
+        self,
+        unicast: int,
+        brightness: int,
+        *,
+        product_category: int = HEYLIGHT_PRODUCT_CATEGORY,
+    ) -> None:
+        """Set global output brightness through Heylight vendor opcode F3."""
+        value = max(0, min(255, int(brightness)))
+        payload = (
+            encode_opcode(_BRIGHTNESS_SET)
+            + bytes([_GAMMA[value], product_category & 0xFF])
+        )
+        self._node.send_access(unicast, payload)
+        await self.flush()
+
+    @staticmethod
+    def scene_color_slots(scene: int) -> int:
+        """Return how many independent color slots the APK supports."""
+        if scene in _SCENE_DUAL_COLOR:
+            return 2
+        if scene in _SCENE_MULTI_COLOR:
+            return 3
+        return 1
+
     async def set_scene(
         self,
         unicast: int,
@@ -193,24 +225,45 @@ class HeylightMeshController:
         speed: int,
         bulb_count: int = 200,
     ) -> None:
+        """Send E6 using the exact scene-specific Heylight payload layout."""
         if not colors:
             raise ValueError("at least one scene color is required")
 
-        colors = colors[: (1 if scene == 0 else 3)]
+        wire_speed = self._wire_speed(scene, speed, bulb_count)
         processed = [
-            self._process_rgb(scene, color) for color in colors
+            self._process_rgb(scene, color)
+            for color in list(colors[:3])
         ]
-        params: list[int] = [
-            scene & 0xFF,
-            self._wire_speed(scene, speed, bulb_count),
-            len(processed),
-        ]
-        for r, g, b in processed:
-            params.extend([0, r, g, b])
-        params.append(HEYLIGHT_PRODUCT_CATEGORY)
+        params: list[int] = [scene & 0xFF, wire_speed]
 
+        if scene in _SCENE_DUAL_COLOR:
+            first = processed[0]
+            second = processed[1] if len(processed) > 1 else first
+            params.extend(
+                [
+                    2,
+                    0,
+                    first[0],
+                    first[1],
+                    first[2],
+                    0,
+                    second[0],
+                    second[1],
+                    second[2],
+                ]
+            )
+        elif scene in _SCENE_MULTI_COLOR:
+            params.append(len(processed))
+            for r, g, b in processed:
+                params.extend([0, r, g, b])
+        else:
+            r, g, b = processed[0]
+            params.extend([1, 0, r, g, b])
+
+        params.append(HEYLIGHT_PRODUCT_CATEGORY)
         self._node.send_access(
             unicast,
             encode_opcode(_SCENE_SET) + bytes(params),
         )
         await self.flush()
+
