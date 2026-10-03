@@ -17,15 +17,13 @@ DEFAULT_COLORS: tuple[tuple[int, int, int], ...] = (
     (0, 0, 255),
 )
 
-# Scene IDs reviewed against Heylight 2.3.18 btsigTelink scene handling.
-# The app labels scene 3 as flickStep3 / "flick around", while scene 2 is
-# also handled by the Telink firmware path.  Keep both temporarily so the
-# firmware-51 / PID 0xFAC8 string can identify which variant it implements.
+# Scene IDs reviewed against Heylight 2.3.18 btsigTelink scene handling and
+# verified on PID 0xFAC8 / firmware 51. Scene 3 is the working "flick around"
+# variant on the tested string.
 EFFECT_TO_SCENE: dict[str, int] = {
     "normal": 0,
     "flick": 1,
     "flick around": 3,
-    "flick around 2 (test)": 2,
     "random color": 5,
     "fading": 6,
     "fading adv": 7,
@@ -79,7 +77,10 @@ class HeylightRuntime:
         scene = self.scene
         if scene in {13, 21, 26}:
             return 2
-        if scene in {7, 8, 9, 11, 12, 19, 22, 23, 25, 27}:
+        # Flick Around (scene 3) is intentionally treated as a 3-colour scene
+        # for this firmware: physical testing confirmed scene 3 itself works,
+        # and the user-facing HeyLight effect supports a multi-colour palette.
+        if scene in {3, 7, 8, 9, 11, 12, 19, 22, 23, 25, 27}:
             return 3
         return 1
 
