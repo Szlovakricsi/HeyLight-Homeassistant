@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.4.3
+## v0.4.4
 
 Improves state synchronization for device-side timing and refreshes integration branding.
 
