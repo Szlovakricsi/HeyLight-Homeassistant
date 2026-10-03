@@ -15,5 +15,5 @@
   "requirements": [
     "pyzbar==0.1.9"
   ],
-  "version": "0.2.3"
+  "version": "0.2.4"
 }
