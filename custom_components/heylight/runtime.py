@@ -19,6 +19,13 @@ DEFAULT_COLORS: tuple[tuple[int, int, int], ...] = (
 
 # Scene IDs reviewed against Heylight 2.3.18 and then verified on the
 # PID 0xFAC8 / firmware 51 light string.
+#
+# Important product-specific detail: the LumineoDancingLights scene list used
+# by this string exposes themeRainbowFixedcolor (scene 45), not fallRainbow
+# (scene 10). Scene 10 is present in the generic scene table, but selecting it
+# on this firmware produces no visible change. We therefore keep the familiar
+# Home Assistant label "fall rainbow" and map it to the product's working
+# fixed-rainbow scene 45.
 EFFECT_TO_SCENE: dict[str, int] = {
     "normal": 0,
     "flick": 1,
@@ -28,7 +35,7 @@ EFFECT_TO_SCENE: dict[str, int] = {
     "fading adv": 7,
     "color change1": 8,
     "color change2": 9,
-    "fall rainbow": 10,
+    "fall rainbow": 45,
     "fall snake": 11,
     "fall ant": 12,
     "moon beyond stars": 13,
@@ -37,16 +44,16 @@ EFFECT_TO_SCENE: dict[str, int] = {
     "random breath": 21,
     "wave down": 22,
     "flag": 23,
-    "head up": 24,
+    "heap up": 24,
     "vertical wave": 25,
     "snake": 26,
     "wave up": 27,
 }
 
 # Physical testing on PID 0xFAC8 / firmware 51 established this capability
-# matrix. Scenes 5 and 10 have a fixed internal colour in the Heylight app;
-# their scene table contains #ffffff and does not expose a colour editor.
-_NO_USER_COLOR_SCENES = frozenset({5, 10})
+# matrix. Random Color and the product's fixed Rainbow do not expose a colour
+# editor in the Heylight app.
+_NO_USER_COLOR_SCENES = frozenset({5, 45})
 _DUAL_COLOR_SCENES = frozenset({13, 21, 26})
 _MULTI_COLOR_SCENES = frozenset({7, 8, 9, 11, 12, 19, 22, 23, 25, 27})
 
@@ -115,13 +122,21 @@ class HeylightRuntime:
         """Return the colours actually transmitted in the E6 scene payload."""
         scene = self.scene
 
-        # randomColor (5) and fallRainbow (10) are fixed-colour effects in the
-        # APK. Both use a hidden #ffffff colourList entry. Sending the previous
-        # user-selected RGB here can make fallRainbow fail on firmware 51, so
-        # always transmit the app's fixed white while still applying HA
-        # brightness to that value.
-        if scene in _NO_USER_COLOR_SCENES:
+        # Random Color (5) has no user colour and the APK stores a hidden
+        # white entry for it. It only needs one placeholder colour.
+        if scene == 5:
             return [self._brightness_scaled((255, 255, 255))]
+
+        # The working rainbow effect for this product is scene 45
+        # (themeRainbowFixedcolor). The APK defines a fixed RGB palette for it:
+        # red, green, blue. Brightness is applied to those fixed colours while
+        # the user is not offered palette controls.
+        if scene == 45:
+            return [
+                self._brightness_scaled((255, 0, 0)),
+                self._brightness_scaled((0, 255, 0)),
+                self._brightness_scaled((0, 0, 255)),
+            ]
 
         slots = self.palette_color_slots
         result = [self.colors[0]]
