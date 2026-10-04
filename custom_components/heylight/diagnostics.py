@@ -34,6 +34,9 @@ async def async_get_config_entry_diagnostics(
             "time_supported": timing.time_supported,
             "clock_synced": timing.clock_synced,
             "device_time_unix": timing.device_time_unix,
+            "clock_offset_seconds": timing.clock_offset_seconds,
+            "last_pre_sync_offset_seconds": timing.last_pre_sync_offset_seconds,
+            "last_clock_sync_unix": timing.last_clock_sync_unix,
         }
         if timing.loaded:
             node_data["timing"] = {
@@ -41,6 +44,8 @@ async def async_get_config_entry_diagnostics(
                 "repeat": timing.repeat,
                 "turn_on_time": timing.turn_on_time.isoformat(timespec="minutes"),
                 "turn_off_time": timing.turn_off_time.isoformat(timespec="minutes"),
+                "pre_sync_seconds": 90,
+                "state_readback_seconds_after_event": [1, 4, 8],
             }
         nodes.append(node_data)
 
