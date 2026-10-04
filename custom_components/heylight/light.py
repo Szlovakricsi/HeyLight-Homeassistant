@@ -31,7 +31,6 @@ from .runtime import (
 from .timing import get_timing_state
 
 _LOGGER = logging.getLogger(__name__)
-_TIMER_PRE_SYNC_SECONDS = 90
 _TIMER_REFRESH_RETRIES = (1, 4, 8)
 
 
@@ -204,12 +203,12 @@ class HeylightLight(LightEntity, RestoreEntity):
         )
 
     def _reschedule_timer_sync(self) -> None:
-        """Schedule clock sync and readback around device timer events.
+        """Schedule readback around device-side timer events.
 
-        Continuous E1 polling remains disabled because some Telink light-string
-        firmware becomes unreliable when repeatedly queried while its Scheduler
-        is active. Instead, synchronize Mesh Time 90 seconds before the next
-        known transition and use a few short readback attempts afterwards.
+        The controller proved sensitive to Time Set operations shortly before a
+        Scheduler transition, so clock synchronization is only performed while
+        saving timing settings. Around scheduled events Home Assistant only
+        performs lightweight power readback attempts.
         """
         if self.hass is None:
             return
@@ -246,7 +245,7 @@ class HeylightLight(LightEntity, RestoreEntity):
         return min(candidates, key=lambda item: item[0]) if candidates else None
 
     async def _timer_sync_loop(self) -> None:
-        """Keep device time accurate and read power after Scheduler events."""
+        """Read power shortly after each Scheduler event."""
         try:
             while self._timing.enabled:
                 event = self._next_timer_event()
@@ -254,32 +253,6 @@ class HeylightLight(LightEntity, RestoreEntity):
                     return
                 target, expected_on = event
 
-                # Synchronize the Telink controller shortly before its local
-                # scheduler fires. If the helper starts inside this window,
-                # synchronize immediately rather than waiting for tomorrow.
-                pre_sync_at = target - timedelta(
-                    seconds=_TIMER_PRE_SYNC_SECONDS
-                )
-                pre_sync_delay = max(
-                    0.0,
-                    (pre_sync_at - dt_util.now()).total_seconds(),
-                )
-                if pre_sync_delay:
-                    await asyncio.sleep(pre_sync_delay)
-
-                if self._coordinator.available and self._timing.time_supported:
-                    try:
-                        await self._timing.async_sync_clock()
-                    except Exception as exc:
-                        _LOGGER.debug(
-                            "Unable to pre-sync HeyLight clock for 0x%04x: %s",
-                            self._node.unicast,
-                            exc,
-                        )
-
-                # Query at +1 s first for a nearly immediate HA update, then
-                # retry at +4 s and +8 s only if the expected physical state
-                # has not appeared yet.
                 for seconds_after in _TIMER_REFRESH_RETRIES:
                     retry_at = target + timedelta(seconds=seconds_after)
                     delay = max(
@@ -295,8 +268,6 @@ class HeylightLight(LightEntity, RestoreEntity):
                         break
 
                 if not self._timing.repeat:
-                    # A non-repeating setup may still have the second event
-                    # later today, so recalculate once the first has passed.
                     continue
         except asyncio.CancelledError:
             raise
@@ -326,10 +297,6 @@ class HeylightLight(LightEntity, RestoreEntity):
         rgb = kwargs.get(ATTR_RGB_COLOR)
         brightness = kwargs.get(ATTR_BRIGHTNESS)
 
-        # The device does not reliably publish its current scene. If HA
-        # explicitly supplies an effect, colour or brightness, always resend
-        # E6 even when it equals restored state. This is especially important
-        # for selecting "normal" and for brightness on PID 0xFAC8 firmware 51.
         scene_requested = (
             effect is not None
             or rgb is not None
@@ -363,9 +330,6 @@ class HeylightLight(LightEntity, RestoreEntity):
             self._runtime.is_on = result
             self._runtime.notify()
 
-        # Brightness is applied by runtime.active_colors() to the E6 scene
-        # colours. The standalone F3 command exists in the APK but did not
-        # physically affect this tested PID/firmware, so it is not used here.
         if scene_requested:
             await self._runtime.apply_scene()
 
