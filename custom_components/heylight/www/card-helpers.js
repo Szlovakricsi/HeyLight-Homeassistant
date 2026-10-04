@@ -1,4 +1,4 @@
-export const VERSION = "0.5.0";
+export const VERSION = "0.5.1";
 
 export const TEXT = {
   en: {
@@ -20,11 +20,11 @@ export const TEXT = {
 };
 
 export const MODES = new Map([
-  ["normal","static"],["flick","flicker"],["flick around","flicker"],["random color","rainbow"],
-  ["fading","breathe"],["fading adv","breathe"],["color change1","shift"],["color change2","shift"],
-  ["fall rainbow","rainbow"],["fall snake","chase"],["fall ant","chase"],["moon beyond stars","stars"],
-  ["collide","collide"],["little fire","fire"],["random breath","breathe"],["wave down","wave-down"],
-  ["flag","flag"],["heap up","wave-up"],["vertical wave","wave-down"],["snake","chase"],["wave up","wave-up"]
+  ["normal","normal"],["flick","flick"],["flick around","flick-around"],["random color","random-color"],
+  ["fading","fading"],["fading adv","fading-adv"],["color change1","color-change1"],["color change2","color-change2"],
+  ["fall rainbow","fall-rainbow"],["fall snake","fall-snake"],["fall ant","fall-ant"],["moon beyond stars","moon-stars"],
+  ["collide","collide"],["little fire","little-fire"],["random breath","random-breath"],["wave down","wave-down"],
+  ["flag","flag"],["heap up","heap-up"],["vertical wave","vertical-wave"],["snake","snake"],["wave up","wave-up"]
 ]);
 
 export const INTERNAL = new Set(["random color", "fall rainbow"]);
@@ -34,14 +34,11 @@ export function rgbToHex(rgb) {
   if (!Array.isArray(rgb) || rgb.length < 3) return "#ffffff";
   return `#${rgb.slice(0,3).map(v => clamp(Number(v)||0,0,255).toString(16).padStart(2,"0")).join("")}`;
 }
-
 export function hexToRgb(hex) {
   const s = String(hex || "#ffffff").replace("#", "");
   return /^[0-9a-f]{6}$/i.test(s) ? [0,2,4].map(i => parseInt(s.slice(i,i+2),16)) : [255,255,255];
 }
-
 export function esc(v) {
   return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
-
 export const pretty = e => e ? e.replace(/\b\w/g, c => c.toUpperCase()) : "—";
