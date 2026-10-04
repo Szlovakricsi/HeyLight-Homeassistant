@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.5.0
+
+Adds the bundled **HeyLight Tree** Home Assistant dashboard card.
+
+### Added
+
+- animated modern Christmas-tree visualization that follows the current HeyLight effect and active palette
+- live power/availability state and current effect display
+- power toggle and effect selector
+- primary RGB colour picker
+- automatic discovery and control of `Effect color 2` and `Effect color 3`, including enable/disable state
+- brightness control
+- effect speed control when the speed entity is available
+- effect-aware animations for flicker/fire, fade/breathe, colour change, rainbow, snake/ant chase, stars, collide, wave and flag scenes
+- Hungarian UI labels when Home Assistant uses Hungarian, with English fallback
+- automatic frontend module loading from the integration; no separate Lovelace resource is required
+- dashboard card picker registration and entity suggestions for compatible HeyLight lights
+
+### Changed
+
+- adds the Home Assistant `frontend` dependency so the bundled card can be registered safely
+
+## v0.4.9
+
+Keeps device-side timing reliable by avoiding automatic clock writes immediately before Scheduler transitions.
+
+### Changed
+
+- time synchronization now happens when timing settings are saved instead of shortly before each scheduled event
+- scheduled on/off state feedback still uses lightweight readback attempts at +1 s, +4 s and +8 s when needed
+
 ## v0.4.8
 
 Improves device-side timer accuracy and state feedback without bringing back continuous polling.
@@ -41,7 +72,7 @@ Improves state synchronization for device-side timing and refreshes integration 
 
 ## v0.4.0
 
-Adds device-side timing support matching the official HeyLight 2.3.18 Timing screen.
+Adds device-side timing support matching the official Heylight 2.3.18 Timing screen.
 
 ### Added
 
@@ -59,7 +90,7 @@ Adds device-side timing support matching the official HeyLight 2.3.18 Timing scr
 - Scheduler slot 2 controls Turn Off
 - Timing OFF writes `No Action` to both slots
 - Repeat ON uses all seven weekdays
-- Repeat OFF mirrors the HeyLight app by using the current month/day
+- Repeat OFF mirrors the Heylight app by using the current month/day
 - settings are stored in the light string itself, not as Home Assistant automations
 
 ## v0.3.0

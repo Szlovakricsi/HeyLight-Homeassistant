@@ -17,6 +17,7 @@ Standalone Home Assistant integration for selected **HeyLight / Telink Bluetooth
 - Effect selector
 - Effect speed (1–10)
 - Optional second and third effect colours where supported
+- Animated **HeyLight Tree** dashboard card bundled with the integration
 - Automatic Bluetooth reconnect
 - Device-side **Timing** configuration using the Bluetooth Mesh Scheduler model
 - HACS-compatible custom repository layout
@@ -84,6 +85,33 @@ Configuration entities are shown in the device's **Configuration** section when 
 - `Turn off time` — device-side power-off time
 
 These controls are stored in the light string itself, not as Home Assistant automations. The implementation intentionally mirrors the official Heylight 2.3.18 Timing screen: Scheduler slot 1 turns the string on and slot 2 turns it off. Repeat ON uses all seven weekdays. Repeat OFF uses the current month/day, matching the app's packet construction.
+
+## HeyLight Tree dashboard card
+
+Version 0.5.0 bundles a native custom Lovelace card with the integration. The integration serves and loads the card automatically, so no separate HACS frontend repository or manual resource URL is required.
+
+After updating HeyLight and restarting Home Assistant, add **HeyLight Tree** from the dashboard card picker. The card can also be added in YAML:
+
+```yaml
+type: custom:heylight-tree-card
+entity: light.your_heylight_string
+```
+
+The card automatically finds `Effect color 2`, `Effect color 3`, and `Effect speed` on the same Home Assistant device. Renamed entity IDs are supported because discovery uses the entity registry and the integration's stable unique IDs.
+
+The card provides:
+
+- live on/off and availability state
+- animated Christmas-tree visualization
+- current effect and effect selector
+- primary RGB colour
+- enable/disable and colour controls for the optional second and third palette colours
+- brightness control
+- effect speed control when the active effect supports it
+- automatic Hungarian labels when Home Assistant is set to Hungarian, otherwise English
+- effect-aware animation modes for static, flicker/fire, breathing/fading, colour change, rainbow, snake/ant chase, stars, collide, wave and flag effects
+
+The tree is a UI visualization of the selected effect and palette; it is not intended to reproduce the physical LED positions pixel-for-pixel.
 
 ## Verified effect map
 
