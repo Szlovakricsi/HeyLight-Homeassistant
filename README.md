@@ -1,56 +1,140 @@
-# HeyLight Home Assistant
+# HeyLight for Home Assistant
 
-Standalone Home Assistant integration for selected **HeyLight / Telink Bluetooth SIG Mesh** RGB light strings.
+A local Home Assistant integration for **HeyLight / Telink Bluetooth Mesh Christmas light strings**, developed and physically tested with a **DekorTrend HeyLight Christmas-tree light set**.
 
-> Experimental interoperability project. Not affiliated with Heylight, Telink, DekorTrend, or Home Assistant.
+> **Project status: BETA**  
+> The integration is still under active development, but the core features are working on the tested DekorTrend HeyLight hardware: power, effects, colours, brightness, effect speed, device-side timing and the bundled animated dashboard card.
 
-## Features
+This is an independent interoperability project and is **not affiliated with HeyLight, DekorTrend, Telink or Home Assistant**.
 
-- Fully local Bluetooth Mesh control through Home Assistant's Bluetooth stack
-- No Heylight cloud required after importing the mesh
-- First-run setup directly from the Heylight **Share Device QR code**
-  - upload a QR image, or
-  - paste the decoded QR JSON text
-- Power on/off
-- RGB effect colour
-- Brightness control
-- Effect selector
-- Effect speed (1–10)
-- Optional second and third effect colours where supported
-- Animated **HeyLight Tree** dashboard card bundled with the integration
-- Automatic Bluetooth reconnect
-- Device-side **Timing** configuration using the Bluetooth Mesh Scheduler model
-- HACS-compatible custom repository layout
+## What this project does
 
-## Supported/tested device
+The official HeyLight application uses Bluetooth SIG Mesh with Telink vendor commands to control the light string. This integration imports the already-created HeyLight mesh into Home Assistant and then controls the lights **locally over Bluetooth**, without requiring the HeyLight cloud for normal operation.
 
-Initial implementation is physically tested with a HeyLight string using:
+After setup, Home Assistant can expose the light as normal entities and the bundled **HeyLight Tree** card provides a visual controller that follows the selected effect and colours.
+
+## Real Home Assistant dashboard card
+
+The screenshot below is from a real Home Assistant installation using the integration — it is **not a generated mock-up**.
+
+<p align="center">
+  <img src="docs/images/heylight-tree-card-real.jpg" alt="Real HeyLight Tree Home Assistant card" width="430">
+</p>
+
+The card includes:
+
+- power control with state feedback
+- animated Christmas-tree preview
+- current effect display and effect selector
+- brightness control
+- effect speed control
+- primary effect colour
+- optional second and third effect colours where supported by the selected effect
+- effect-specific animations modelled after the behaviour of the original HeyLight app
+- automatic discovery of the extra colour and speed entities belonging to the same device
+- responsive mobile layout
+
+The animated tree is a **visual representation of the active HeyLight effect**, not a pixel-perfect map of the physical LED positions.
+
+## Important setup limitation
+
+### Setup currently has to start in the official HeyLight app
+
+At the moment, Home Assistant **cannot commission a brand-new HeyLight light string directly**.
+
+The light must first be added and working in the official **HeyLight application**. The integration then imports the Bluetooth Mesh credentials using the app's **Share Device** function.
+
+Current setup flow:
+
+1. Pair and configure the light string in the official HeyLight app.
+2. Open **Share Device** in the HeyLight app.
+3. Display the generated QR code.
+4. In Home Assistant, add the **HeyLight** integration.
+5. Upload a screenshot/photo of the QR code, or paste the decoded QR JSON text.
+6. Home Assistant imports the mesh information and connects to the light locally.
+
+Direct Home Assistant provisioning may be added later, but it is **not implemented yet**.
+
+> **Security warning:** never publish your real Share Device QR code or its decoded JSON. It contains Bluetooth Mesh network/application/device key material.
+
+## Tested hardware
+
+The current implementation has been physically developed and tested with a **DekorTrend HeyLight Christmas light string** using:
 
 - Bluetooth SIG Mesh / Telink
-- Company ID `0x0211`
-- Vendor model `0x0211:0x0000`
-- Product ID `0xFAC8`
-- firmware label `51`
-- Heylight `sl2c0030` family
+- Company ID: `0x0211`
+- Vendor model: `0x0211:0x0000`
+- Product ID: `0xFAC8`
+- firmware label: `51`
+- HeyLight family/agent: `sl2c0030`
 
-Other HeyLight Telink devices with the same vendor model may work, but are not yet verified.
+Other HeyLight products using the same Telink vendor model **may work**, but they should currently be considered unverified until tested on real hardware.
 
-## Install with HACS
+## Working features
 
-1. HACS → Integrations → `⋮` → **Custom repositories**
-2. Add `https://github.com/Szlovakricsi/HeyLight-Homeassistant`
-3. Category: **Integration**
-4. Install **HeyLight**
-5. Restart Home Assistant
-6. Settings → Devices & services → Add integration → **HeyLight**
+- local Bluetooth Mesh communication through Home Assistant's Bluetooth stack
+- no HeyLight cloud required after mesh import
+- QR-code / Share Device import
+- power on/off
+- RGB colour control
+- brightness control
+- effect selection
+- effect speed from 1 to 10
+- optional second and third effect colours
+- automatic Bluetooth reconnect
+- device-side timer configuration using the Bluetooth Mesh Scheduler model
+- bundled **HeyLight Tree** dashboard card
+- HACS-compatible integration layout and GitHub releases
 
-## Configure from the QR code
+## How it works
 
-In the Heylight app, use **Share Device** and display the QR code.
+The integration does not emulate the HeyLight cloud. Instead, it talks directly to the physical controller.
 
-At setup you can either upload a screenshot/photo of the QR or paste the decoded QR text.
+In simplified form:
 
-Example with secrets replaced:
+```text
+HeyLight app
+    │
+    │ Share Device QR
+    ▼
+Home Assistant HeyLight integration
+    │
+    │ imported Mesh NetKey / AppKey / node data
+    ▼
+Home Assistant Bluetooth stack
+    │
+    │ Bluetooth Mesh Proxy
+    ▼
+HeyLight / Telink controller
+    │
+    ├── Power
+    ├── Scene / effect
+    ├── RGB palette
+    ├── Effect speed
+    └── Scheduler / timing
+```
+
+The imported mesh information is stored in the Home Assistant config entry. Commands are then sent locally using Bluetooth Mesh messages and the reverse-engineered Telink vendor protocol used by the tested light string.
+
+## Installation with HACS
+
+1. Open **HACS → Integrations**.
+2. Open the `⋮` menu and select **Custom repositories**.
+3. Add:
+
+   ```text
+   https://github.com/Szlovakricsi/HeyLight-Homeassistant
+   ```
+
+4. Select category **Integration**.
+5. Install **HeyLight**.
+6. Restart Home Assistant.
+7. Go to **Settings → Devices & services → Add integration → HeyLight**.
+8. Import the Share Device QR from the official HeyLight app.
+
+## Example Share Device data
+
+The real QR data contains secrets. A sanitized example looks like this:
 
 ```json
 {
@@ -65,100 +149,130 @@ Example with secrets replaced:
       "k": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
       "i": "...",
       "t": 64200,
-      "p": {"l": 200, "f": 360, "o": 1}
+      "p": {
+        "l": 200,
+        "f": 360,
+        "o": 1
+      }
     }
   ]
 }
 ```
 
-**Never post your real QR JSON publicly.** It contains Bluetooth Mesh network/application/device key material.
+## Home Assistant entities
 
-## Entities
+The main light entity provides:
 
-The main light entity provides power, RGB colour, brightness and effect selection. `Effect speed` is exposed as a Number entity. Effects that support extra colours expose `Effect color 2` and `Effect color 3` helper light entities.
+- power
+- RGB colour
+- brightness
+- effect selection
 
-Configuration entities are shown in the device's **Configuration** section when the Scheduler Server/Setup Server models are present:
+Additional entities are created where supported:
 
-- `Timing` — enables/disables the device-side timer
-- `Timing repeat` — matches the Heylight app's Repeat switch
-- `Turn on time` — device-side power-on time
-- `Turn off time` — device-side power-off time
+- `Effect speed` — Number entity, range 1–10
+- `Effect color 2` — optional palette colour
+- `Effect color 3` — optional palette colour
 
-These controls are stored in the light string itself, not as Home Assistant automations. The implementation intentionally mirrors the official Heylight 2.3.18 Timing screen: Scheduler slot 1 turns the string on and slot 2 turns it off. Repeat ON uses all seven weekdays. Repeat OFF uses the current month/day, matching the app's packet construction.
+The availability of the extra colour controls depends on the currently selected effect.
+
+### Device-side timing
+
+When the light exposes the required Bluetooth Mesh Scheduler models, the integration also creates configuration entities for:
+
+- `Timing`
+- `Timing repeat`
+- `Turn on time`
+- `Turn off time`
+
+These schedules are written to the **light controller itself**. They are not Home Assistant automations, so the controller can execute the configured on/off time independently once programmed.
 
 ## HeyLight Tree dashboard card
 
-Version 0.5.0 bundles a native custom Lovelace card with the integration. The integration serves and loads the card automatically, so no separate HACS frontend repository or manual resource URL is required.
+The card is bundled with the integration and loaded automatically. A separate HACS frontend repository or manually configured Lovelace resource is not required.
 
-After updating HeyLight and restarting Home Assistant, add **HeyLight Tree** from the dashboard card picker. The card can also be added in YAML:
+Add **HeyLight Tree** from the dashboard card picker, or use YAML:
 
 ```yaml
 type: custom:heylight-tree-card
 entity: light.your_heylight_string
 ```
 
-The card automatically finds `Effect color 2`, `Effect color 3`, and `Effect speed` on the same Home Assistant device. Renamed entity IDs are supported because discovery uses the entity registry and the integration's stable unique IDs.
-
-The card provides:
-
-- live on/off and availability state
-- animated Christmas-tree visualization
-- current effect and effect selector
-- primary RGB colour
-- enable/disable and colour controls for the optional second and third palette colours
-- brightness control
-- effect speed control when the active effect supports it
-- automatic Hungarian labels when Home Assistant is set to Hungarian, otherwise English
-- effect-aware animation modes for static, flicker/fire, breathing/fading, colour change, rainbow, snake/ant chase, stars, collide, wave and flag effects
-
-The tree is a UI visualization of the selected effect and palette; it is not intended to reproduce the physical LED positions pixel-for-pixel.
+The card automatically looks up the matching effect-speed and extra-colour entities using the Home Assistant entity registry and the stable unique IDs created by the integration.
 
 ## Verified effect map
 
-| Effect | Colour controls |
-|---|---|
-| normal | 1 colour |
-| flick | 1 colour |
-| flick around | 1 colour |
-| random color | none; internal colours |
-| fading | 1 colour |
-| fading adv | up to 3 colours |
-| color change1 | up to 3 colours |
-| color change2 | up to 3 colours |
-| fall rainbow | none; fixed internal rainbow |
-| fall snake | up to 3 colours |
-| fall ant | up to 3 colours |
-| moon beyond stars | 2 colours |
-| collide | 1 colour |
-| little fire | up to 3 colours |
-| random breath | 2 colours |
-| wave down | up to 3 colours |
-| flag | up to 3 colours |
-| heap up | 1 colour |
-| vertical wave | up to 3 colours |
-| snake | 2 colours |
-| wave up | up to 3 colours |
+| Effect | User colour controls |
+| --- | --- |
+| `normal` | 1 colour |
+| `flick` | 1 colour |
+| `flick around` | 1 colour |
+| `random color` | internal colours |
+| `fading` | 1 colour |
+| `fading adv` | up to 3 colours |
+| `color change1` | up to 3 colours |
+| `color change2` | up to 3 colours |
+| `fall rainbow` | fixed internal rainbow |
+| `fall snake` | up to 3 colours |
+| `fall ant` | up to 3 colours |
+| `moon beyond stars` | 2 colours |
+| `collide` | 1 colour |
+| `little fire` | up to 3 colours |
+| `random breath` | 2 colours |
+| `wave down` | up to 3 colours |
+| `flag` | up to 3 colours |
+| `heap up` | 1 colour |
+| `vertical wave` | up to 3 colours |
+| `snake` | 2 colours |
+| `wave up` | up to 3 colours |
 
-`fall rainbow` maps to the working product-specific scene 45 (`themeRainbowFixedcolor`) on PID `0xFAC8` / firmware `51`.
+On the tested PID `0xFAC8` / firmware `51`, `fall rainbow` is mapped to the product-specific working scene 45 (`themeRainbowFixedcolor`).
 
-## Brightness
+## Brightness implementation
 
-The tested firmware does not visibly react to Heylight's standalone vendor brightness opcode. Home Assistant brightness therefore scales the scene RGB values before transmission while preserving the original selected colours in Home Assistant state.
+The tested firmware does not visibly react to HeyLight's standalone vendor brightness command. For this device, brightness is therefore implemented by scaling the RGB values transmitted with the scene while keeping the original selected colours in Home Assistant state.
 
-## Bluetooth behavior
+This means returning brightness to 100% restores the exact selected RGB colours.
 
-The integration accepts the correct Mesh Network ID advertisement or a cryptographically valid Mesh Node Identity advertisement derived from the imported NetKey and node unicast address.
+## Bluetooth behaviour
 
-It keeps a Mesh Proxy GATT connection where possible and reconnects automatically after a disconnect. A controller may expose only one GATT Mesh Proxy connection at a time, so the official Heylight app may be unable to connect while Home Assistant holds it.
+The integration accepts either:
+
+- the expected Mesh Network ID advertisement, or
+- a cryptographically valid Mesh Node Identity advertisement derived from the imported NetKey and node unicast address.
+
+It keeps a Mesh Proxy GATT connection where possible and reconnects automatically after a disconnect.
+
+A controller may allow only one Mesh Proxy GATT client at a time. Because of this, the official HeyLight app may temporarily be unable to connect while Home Assistant is actively holding the proxy connection.
+
+## Beta status and known limitations
+
+This project is currently **beta software**.
+
+It is usable on the tested DekorTrend hardware, but users should expect protocol refinements as more devices are tested.
+
+Current limitations include:
+
+- new lights cannot yet be commissioned directly from Home Assistant
+- the initial mesh must be created in the official HeyLight app and imported through **Share Device**
+- compatibility is only verified on the hardware listed above
+- effect behaviour can differ between HeyLight product families or firmware versions
+- the dashboard animation reproduces the visual behaviour of the effects, but not the exact physical LED geometry of every string installation
+
+Bug reports and hardware test results are welcome, especially when they include the Product ID, firmware label and diagnostics output with secrets removed.
 
 ## Protocol documentation
 
-See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the reverse-engineered Telink vendor commands, effect payload layouts, speed conversion and Bluetooth Mesh Scheduler details.
+Reverse-engineering notes for the Telink vendor commands, effect payloads, speed conversion and Bluetooth Mesh Scheduler support are available in [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
 ## Privacy
 
-The imported Share Device JSON is stored in the Home Assistant config entry. It is not sent to this project's GitHub repository or to a cloud service. Diagnostics intentionally omit NetKey, AppKey and DeviceKey values.
+The imported Share Device data stays in the Home Assistant config entry and is not sent to this GitHub repository or to a project-operated cloud service.
 
-## License / attribution
+Diagnostics intentionally omit the Mesh NetKey, AppKey and DeviceKey values.
 
-MIT licensed. Bluetooth Mesh code in `custom_components/heylight/btmesh` is derived in part from [dasimon135/ha-bluetooth-mesh](https://github.com/dasimon135/ha-bluetooth-mesh), also MIT licensed, copyright © 2026 David Simon. See `NOTICE`.
+## License and attribution
+
+MIT licensed.
+
+Bluetooth Mesh code in `custom_components/heylight/btmesh` is derived in part from [`dasimon135/ha-bluetooth-mesh`](https://github.com/dasimon135/ha-bluetooth-mesh), also MIT licensed, copyright © 2026 David Simon. See [`NOTICE`](NOTICE).
