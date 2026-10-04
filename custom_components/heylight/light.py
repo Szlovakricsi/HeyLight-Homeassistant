@@ -31,7 +31,8 @@ from .runtime import (
 from .timing import get_timing_state
 
 _LOGGER = logging.getLogger(__name__)
-_TIMER_REFRESH_DELAY = 3
+_TIMER_PRE_SYNC_SECONDS = 90
+_TIMER_REFRESH_RETRIES = (1, 4, 8)
 
 
 def _device_info(coordinator, node) -> DeviceInfo:
@@ -188,7 +189,7 @@ class HeylightLight(LightEntity, RestoreEntity):
 
     @callback
     def _timing_changed(self) -> None:
-        """Re-arm the HA-side readback helper after timer settings change."""
+        """Re-arm the HA-side helper after timer settings change."""
         self._reschedule_timer_sync()
 
     def _schedule_refresh(self) -> None:
@@ -203,13 +204,12 @@ class HeylightLight(LightEntity, RestoreEntity):
         )
 
     def _reschedule_timer_sync(self) -> None:
-        """Schedule a power readback shortly after the next device timer event.
+        """Schedule clock sync and readback around device timer events.
 
-        The previous 5-second continuous E1 polling was intentionally removed.
-        Some Telink light-string firmware becomes unreliable when repeatedly
-        queried while its on-device Scheduler is active. We only need a
-        readback after the known Scheduler transition to keep Home Assistant's
-        light state synchronized.
+        Continuous E1 polling remains disabled because some Telink light-string
+        firmware becomes unreliable when repeatedly queried while its Scheduler
+        is active. Instead, synchronize Mesh Time 90 seconds before the next
+        known transition and use a few short readback attempts afterwards.
         """
         if self.hass is None:
             return
@@ -223,13 +223,13 @@ class HeylightLight(LightEntity, RestoreEntity):
             f"HeyLight timer state sync {self._node.unicast:04x}",
         )
 
-    def _next_timer_datetime(self):
-        """Return the next configured on/off timer transition in local time."""
+    def _next_timer_event(self):
+        """Return the next configured timer transition and expected power."""
         now = dt_util.now()
         candidates = []
-        for configured in (
-            self._timing.turn_on_time,
-            self._timing.turn_off_time,
+        for configured, expected_on in (
+            (self._timing.turn_on_time, True),
+            (self._timing.turn_off_time, False),
         ):
             target = now.replace(
                 hour=configured.hour,
@@ -240,34 +240,68 @@ class HeylightLight(LightEntity, RestoreEntity):
             if self._timing.repeat:
                 if target <= now:
                     target += timedelta(days=1)
-                candidates.append(target)
+                candidates.append((target, expected_on))
             elif target > now:
-                candidates.append(target)
-        return min(candidates) if candidates else None
+                candidates.append((target, expected_on))
+        return min(candidates, key=lambda item: item[0]) if candidates else None
 
     async def _timer_sync_loop(self) -> None:
-        """Read power just after each configured Scheduler transition."""
+        """Keep device time accurate and read power after Scheduler events."""
         try:
             while self._timing.enabled:
-                target = self._next_timer_datetime()
-                if target is None:
+                event = self._next_timer_event()
+                if event is None:
                     return
-                delay = max(
-                    0.0,
-                    (target - dt_util.now()).total_seconds()
-                    + _TIMER_REFRESH_DELAY,
+                target, expected_on = event
+
+                # Synchronize the Telink controller shortly before its local
+                # scheduler fires. If the helper starts inside this window,
+                # synchronize immediately rather than waiting for tomorrow.
+                pre_sync_at = target - timedelta(
+                    seconds=_TIMER_PRE_SYNC_SECONDS
                 )
-                await asyncio.sleep(delay)
-                if self._coordinator.available:
-                    await self.async_refresh_state()
+                pre_sync_delay = max(
+                    0.0,
+                    (pre_sync_at - dt_util.now()).total_seconds(),
+                )
+                if pre_sync_delay:
+                    await asyncio.sleep(pre_sync_delay)
+
+                if self._coordinator.available and self._timing.time_supported:
+                    try:
+                        await self._timing.async_sync_clock()
+                    except Exception as exc:
+                        _LOGGER.debug(
+                            "Unable to pre-sync HeyLight clock for 0x%04x: %s",
+                            self._node.unicast,
+                            exc,
+                        )
+
+                # Query at +1 s first for a nearly immediate HA update, then
+                # retry at +4 s and +8 s only if the expected physical state
+                # has not appeared yet.
+                for seconds_after in _TIMER_REFRESH_RETRIES:
+                    retry_at = target + timedelta(seconds=seconds_after)
+                    delay = max(
+                        0.0,
+                        (retry_at - dt_util.now()).total_seconds(),
+                    )
+                    if delay:
+                        await asyncio.sleep(delay)
+                    if not self._coordinator.available:
+                        continue
+                    state = await self.async_refresh_state()
+                    if state is expected_on:
+                        break
+
                 if not self._timing.repeat:
                     # A non-repeating setup may still have the second event
-                    # later today, so loop once more and recalculate.
+                    # later today, so recalculate once the first has passed.
                     continue
         except asyncio.CancelledError:
             raise
 
-    async def async_refresh_state(self) -> None:
+    async def async_refresh_state(self) -> bool | None:
         try:
             state = await self._coordinator._run_connected(
                 lambda controller: controller.get_power(
@@ -280,11 +314,12 @@ class HeylightLight(LightEntity, RestoreEntity):
                 self._node.unicast,
                 exc,
             )
-            return
+            return None
 
         if state is not None and state != self._runtime.is_on:
             self._runtime.is_on = state
             self._runtime.notify()
+        return state
 
     async def async_turn_on(self, **kwargs) -> None:
         effect = kwargs.get(ATTR_EFFECT)
