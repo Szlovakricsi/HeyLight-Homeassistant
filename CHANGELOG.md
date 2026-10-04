@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.5.2
+
+Rebuilds the **HeyLight Tree** preview from a frame-by-frame review of the original HeyLight application video.
+
+### Changed
+
+- increases the preview tree to 17 LED rows and makes it taller while keeping extra space above it so the star is no longer clipped on phones
+- keeps the effect name beside the tree without shrinking the tree into a narrow column
+- hides the `Color 2` and `Color 3` text labels on phone layouts while keeping their enable buttons and colour swatches accessible
+- reworks `flick` as synchronized whole-tree colour changes and `flick around` as rotating diagonal light paths
+- makes `random color` use individually distributed internal colours
+- makes `fading` a synchronized brightness fade and `fading adv` fade through the active user palette
+- makes `color change1` switch the whole tree between the chosen colours and `color change2` render the moving three-colour distributed pattern seen in the app
+- makes `fall rainbow` grow a fixed rainbow from the top down, `fall snake` grow the selected colour downward, and `fall ant` move a narrow selected-colour band down the tree
+- changes `moon beyond stars` to sparse twinkling points on a dark tree and `collide` to opposing moving bands
+- changes `little fire` to palette-based moving horizontal colour zones instead of artificial red/orange hue shifting
+- changes `random breath` to a breathing primary colour with randomly distributed secondary/tertiary accents
+- rebuilds `wave up` and `wave down` as horizontal selected-colour bands that fill the tree in the corresponding direction
+- rebuilds `flag` as three horizontal palette bands with the same full-pattern breathing behaviour visible in the HeyLight app
+- rebuilds `heap up` with a falling bar plus progressively stacked lower rows
+- rebuilds `vertical wave` as growing vertical colour paths and `snake` as a short moving segment following a serpentine LED path
+- keeps user-selectable effects tied to the actual selected Home Assistant palette colours
+- removes CSS arithmetic that can be unreliable in mobile Safari by precomputing animation timing values in JavaScript
+
 ## v0.5.1
 
 Refines the bundled **HeyLight Tree** dashboard card after comparison with the original HeyLight app animation video.
@@ -105,7 +129,7 @@ Adds device-side timing support matching the official Heylight 2.3.18 Timing scr
 - Scheduler slot 2 controls Turn Off
 - Timing OFF writes `No Action` to both slots
 - Repeat ON uses all seven weekdays
-- Repeat OFF mirrors the HeyLight app by using the current month/day
+- Repeat OFF mirrors the Heylight app by using the current month/day
 - settings are stored in the light string itself, not as Home Assistant automations
 
 ## v0.3.0
