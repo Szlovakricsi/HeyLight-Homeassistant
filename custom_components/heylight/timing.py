@@ -128,6 +128,9 @@ class HeylightTimingState:
         self.loaded = False
         self.clock_synced = False
         self.device_time_unix: int | None = None
+        self.clock_offset_seconds: int | None = None
+        self.last_pre_sync_offset_seconds: int | None = None
+        self.last_clock_sync_unix: int | None = None
         self._lock = asyncio.Lock()
         self._listeners: list[callable] = []
 
@@ -158,23 +161,76 @@ class HeylightTimingState:
         for listener in tuple(self._listeners):
             listener()
 
-    async def _sync_clock(self) -> None:
-        """Mirror HeyLight's behavior: keep the Mesh Time state synchronized."""
+    async def _measure_clock_unlocked(self) -> int | None:
+        """Read device time and record its offset from Home Assistant.
+
+        The midpoint of the Bluetooth request is used as the comparison time so
+        request/response latency does not look like clock drift.
+        Positive values mean the light string clock is ahead of Home Assistant.
+        """
+        if not self.time_supported:
+            self.clock_synced = False
+            self.device_time_unix = None
+            self.clock_offset_seconds = None
+            return None
+
+        started = dt_util.now().timestamp()
+        device_time = await self.coordinator._run_connected(
+            lambda controller: _get_device_time(
+                controller, self.node.unicast
+            )
+        )
+        finished = dt_util.now().timestamp()
+        self.device_time_unix = device_time
+        if device_time is None:
+            self.clock_offset_seconds = None
+            self.clock_synced = False
+            return None
+
+        reference = round((started + finished) / 2)
+        self.clock_offset_seconds = int(device_time - reference)
+        self.clock_synced = abs(self.clock_offset_seconds) <= 2
+        return self.clock_offset_seconds
+
+    async def _sync_clock_unlocked(self) -> None:
+        """Measure drift, then synchronize the Mesh Time state from HA."""
         if not self.time_supported:
             self.clock_synced = False
             return
 
-        # HeyLight's app checks the Time state and updates it whenever it is
-        # more than 60 seconds away from the phone clock. For an explicit HA
-        # timing write we synchronize unconditionally first; this also fixes a
-        # freshly powered controller whose TAI Seconds state is zero.
+        self.last_pre_sync_offset_seconds = await self._measure_clock_unlocked()
+
         readback = await self.coordinator._run_connected(
             lambda controller: _set_device_time(
                 controller, self.node.unicast
             )
         )
         self.device_time_unix = readback
-        self.clock_synced = readback is not None
+        self.last_clock_sync_unix = int(dt_util.now().timestamp())
+
+        if readback is None:
+            self.clock_synced = False
+            self.clock_offset_seconds = None
+            return
+
+        self.clock_offset_seconds = (
+            readback - int(dt_util.now().timestamp())
+        )
+        self.clock_synced = abs(self.clock_offset_seconds) <= 2
+
+    async def async_sync_clock(self) -> None:
+        """Synchronize only the device clock without rewriting timer slots."""
+        if not self.time_supported:
+            return
+        async with self._lock:
+            await self._sync_clock_unlocked()
+
+    async def async_measure_clock(self) -> int | None:
+        """Measure and return current device clock offset in seconds."""
+        if not self.time_supported:
+            return None
+        async with self._lock:
+            return await self._measure_clock_unlocked()
 
     async def async_refresh(self) -> None:
         """Read Heylight's two Scheduler slots and current Mesh Time state."""
@@ -182,16 +238,7 @@ class HeylightTimingState:
             return
         async with self._lock:
             if self.time_supported:
-                self.device_time_unix = await self.coordinator._run_connected(
-                    lambda controller: _get_device_time(
-                        controller, self.node.unicast
-                    )
-                )
-                if self.device_time_unix is not None:
-                    self.clock_synced = (
-                        abs(self.device_time_unix - int(dt_util.now().timestamp()))
-                        <= 60
-                    )
+                await self._measure_clock_unlocked()
 
             on_entry = await self.coordinator._run_connected(
                 lambda controller: controller.get_scheduler_entry(
@@ -247,7 +294,7 @@ class HeylightTimingState:
         if not self.supported:
             return
         async with self._lock:
-            await self._sync_clock()
+            await self._sync_clock_unlocked()
 
             on_entry = self._entry(
                 TURN_ON_INDEX, self.turn_on_time, SCHEDULER_ACTION_ON
