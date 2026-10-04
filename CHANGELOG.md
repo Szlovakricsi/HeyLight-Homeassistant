@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.5.1
+
+Refines the bundled **HeyLight Tree** dashboard card after comparison with the original HeyLight app animation video.
+
+### Changed
+
+- moves the current effect name beside the tree instead of overlaying it on the tree
+- removes the separate on/off status lamp/text; the power button itself is now the state indicator
+- keeps the last selected effect, colours, brightness and effect speed visible while the physical light is off
+- no longer falls back to displaying `normal` just because the light is off or an effect attribute is temporarily absent
+- stores the last UI settings locally so the card can preserve them across dashboard reloads while the light is off
+- replaces the generic animation groups with effect-specific animation patterns modelled after the original HeyLight application video
+- keeps user-selected palette colours as the colours used by the animated preview where the physical effect accepts user colours
+- adds separate visual behaviour for normal, flick, flick around, random color, fading, fading adv, color change1, color change2, fall rainbow, fall snake, fall ant, moon beyond stars, collide, little fire, random breath, wave down, flag, heap up, vertical wave, snake and wave up
+
 ## v0.5.0
 
 Adds the bundled **HeyLight Tree** Home Assistant dashboard card.
@@ -90,7 +105,7 @@ Adds device-side timing support matching the official Heylight 2.3.18 Timing scr
 - Scheduler slot 2 controls Turn Off
 - Timing OFF writes `No Action` to both slots
 - Repeat ON uses all seven weekdays
-- Repeat OFF mirrors the Heylight app by using the current month/day
+- Repeat OFF mirrors the HeyLight app by using the current month/day
 - settings are stored in the light string itself, not as Home Assistant automations
 
 ## v0.3.0
