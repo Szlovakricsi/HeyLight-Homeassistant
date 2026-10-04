@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.4.8
+
+Improves device-side timer accuracy and state feedback without bringing back continuous polling.
+
+### Changed
+
+- measures the light string's Bluetooth Mesh clock offset against Home Assistant
+- records the measured clock drift in diagnostics
+- synchronizes the light string clock 90 seconds before the next configured on/off Scheduler transition
+- keeps the existing synchronization when timing settings are written
+- checks the physical power state at +1 s after a timer transition, then retries at +4 s and +8 s only when needed
+- exposes `clock_offset_seconds`, `last_pre_sync_offset_seconds`, and `last_clock_sync_unix` in diagnostics
+
+## v0.4.7
+
+Refreshes the HeyLight brand assets used by the custom integration.
+
 ## v0.4.6
 
 Fixes a regression introduced by aggressive power-state polling.
