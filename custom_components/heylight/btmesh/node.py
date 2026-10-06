@@ -32,6 +32,15 @@ class ReceivedMessage(NamedTuple):
     params: bytes
 
 
+class _Waiter(NamedTuple):
+    dst: int
+    expected_opcode: int
+    key: bytes
+    akf: bool
+    aid: int
+    future: asyncio.Future[ReceivedMessage]
+
+
 class MeshNode:
     def __init__(
         self,
@@ -49,20 +58,25 @@ class MeshNode:
         self._iv_index = iv_index
         self._src = src_addr
         self._send = send_network_pdu
-        self._waiters: list[
-            tuple[int, int, asyncio.Future[ReceivedMessage]]
-        ] = []
+        self._waiters: list[_Waiter] = []
 
-    def send_access(
-        self, dst: int, payload: bytes, *, ttl: int = DEFAULT_TTL
+    def _send_access_with_key(
+        self,
+        dst: int,
+        payload: bytes,
+        *,
+        key: bytes,
+        akf: bool,
+        aid: int,
+        ttl: int = DEFAULT_TTL,
     ) -> None:
         upper_len = len(payload) + TRANS_MIC_LEN
 
         if upper_len <= UNSEG_MAX_UPPER_LEN:
             seq = self.ctx.next_seq()
             upper = encrypt_access(
-                self._appkey,
-                akf=True,
+                key,
+                akf=akf,
                 seq=seq,
                 src=self._src,
                 dst=dst,
@@ -73,7 +87,7 @@ class MeshNode:
                 (
                     seq,
                     build_unsegmented_access(
-                        upper, akf=True, aid=self._aid
+                        upper, akf=akf, aid=aid
                     ),
                 )
             ]
@@ -81,8 +95,8 @@ class MeshNode:
             seg_count = (upper_len + 11) // 12
             first_seq = self.ctx.next_seq(seg_count)
             upper = encrypt_access(
-                self._appkey,
-                akf=True,
+                key,
+                akf=akf,
                 seq=first_seq,
                 src=self._src,
                 dst=dst,
@@ -91,8 +105,8 @@ class MeshNode:
             )
             pdus = segment_access_message(
                 upper,
-                akf=True,
-                aid=self._aid,
+                akf=akf,
+                aid=aid,
                 first_seq=first_seq,
             )
 
@@ -109,6 +123,38 @@ class MeshNode:
                 )
             )
 
+    def send_access(
+        self, dst: int, payload: bytes, *, ttl: int = DEFAULT_TTL
+    ) -> None:
+        self._send_access_with_key(
+            dst,
+            payload,
+            key=self._appkey,
+            akf=True,
+            aid=self._aid,
+            ttl=ttl,
+        )
+
+    def send_devkey_access(
+        self,
+        dst: int,
+        payload: bytes,
+        device_key: bytes,
+        *,
+        ttl: int = DEFAULT_TTL,
+    ) -> None:
+        """Send a Configuration message encrypted with a node DeviceKey."""
+        if len(device_key) != 16:
+            raise ValueError("device_key must be 16 bytes")
+        self._send_access_with_key(
+            dst,
+            payload,
+            key=device_key,
+            akf=False,
+            aid=0,
+            ttl=ttl,
+        )
+
     def build_proxy_config_pdu(self, message: bytes) -> bytes:
         return network.encode(
             self.ctx,
@@ -119,6 +165,17 @@ class MeshNode:
             dst=0x0000,
             transport_pdu=message,
         )
+
+    def _dispatch(self, msg: ReceivedMessage, *, akf: bool) -> None:
+        for waiter in tuple(self._waiters):
+            if (
+                waiter.dst == msg.src
+                and waiter.expected_opcode == msg.opcode
+                and waiter.akf == akf
+                and not waiter.future.done()
+            ):
+                waiter.future.set_result(msg)
+                break
 
     def handle_network_pdu(self, raw: bytes) -> None:
         try:
@@ -134,36 +191,90 @@ class MeshNode:
         except Exception:
             return
 
-        # HeyLight power Status is unsegmented. Scene commands are
-        # unacknowledged, so no segmented inbound Access message is required.
+        # Status responses used by this integration are unsegmented. Outbound
+        # Config AppKey Add can be segmented, but its response is short.
         if not isinstance(lower, UnsegmentedAccess):
             return
-        if not lower.akf or lower.aid != self._aid:
-            return
 
-        try:
-            access_payload = decrypt_access(
-                self._appkey,
-                akf=True,
-                seq=pdu.seq,
-                src=pdu.src,
-                dst=pdu.dst,
-                iv_index=self._iv_index,
-                upper_pdu=lower.upper_pdu,
+        if lower.akf:
+            if lower.aid != self._aid:
+                return
+            try:
+                access_payload = decrypt_access(
+                    self._appkey,
+                    akf=True,
+                    seq=pdu.seq,
+                    src=pdu.src,
+                    dst=pdu.dst,
+                    iv_index=self._iv_index,
+                    upper_pdu=lower.upper_pdu,
+                )
+                opcode, params = parse_access(access_payload)
+            except Exception:
+                return
+            self._dispatch(
+                ReceivedMessage(pdu.src, opcode, params), akf=True
             )
-            opcode, params = parse_access(access_payload)
-        except Exception:
             return
 
-        msg = ReceivedMessage(pdu.src, opcode, params)
-        for dst, expected, fut in tuple(self._waiters):
-            if (
-                dst == msg.src
-                and expected == msg.opcode
-                and not fut.done()
-            ):
-                fut.set_result(msg)
-                break
+        if lower.aid != 0:
+            return
+
+        # DeviceKey traffic has no AID. Try only the DeviceKeys attached to
+        # pending requests from this source so unrelated Config traffic is not
+        # brute-forced against every known key.
+        for waiter in tuple(self._waiters):
+            if waiter.akf or waiter.dst != pdu.src:
+                continue
+            try:
+                access_payload = decrypt_access(
+                    waiter.key,
+                    akf=False,
+                    seq=pdu.seq,
+                    src=pdu.src,
+                    dst=pdu.dst,
+                    iv_index=self._iv_index,
+                    upper_pdu=lower.upper_pdu,
+                )
+                opcode, params = parse_access(access_payload)
+            except Exception:
+                continue
+            if opcode != waiter.expected_opcode:
+                continue
+            if not waiter.future.done():
+                waiter.future.set_result(
+                    ReceivedMessage(pdu.src, opcode, params)
+                )
+            break
+
+    async def _request_with_key(
+        self,
+        dst: int,
+        payload: bytes,
+        expected_opcode: int,
+        *,
+        key: bytes,
+        akf: bool,
+        aid: int,
+        timeout: float,
+    ) -> ReceivedMessage:
+        fut: asyncio.Future[ReceivedMessage] = (
+            asyncio.get_running_loop().create_future()
+        )
+        waiter = _Waiter(dst, expected_opcode, key, akf, aid, fut)
+        self._waiters.append(waiter)
+        try:
+            self._send_access_with_key(
+                dst,
+                payload,
+                key=key,
+                akf=akf,
+                aid=aid,
+            )
+            return await asyncio.wait_for(fut, timeout)
+        finally:
+            if waiter in self._waiters:
+                self._waiters.remove(waiter)
 
     async def request(
         self,
@@ -173,14 +284,34 @@ class MeshNode:
         *,
         timeout: float = 5.0,
     ) -> ReceivedMessage:
-        fut: asyncio.Future[ReceivedMessage] = (
-            asyncio.get_running_loop().create_future()
+        return await self._request_with_key(
+            dst,
+            payload,
+            expected_opcode,
+            key=self._appkey,
+            akf=True,
+            aid=self._aid,
+            timeout=timeout,
         )
-        waiter = (dst, expected_opcode, fut)
-        self._waiters.append(waiter)
-        try:
-            self.send_access(dst, payload)
-            return await asyncio.wait_for(fut, timeout)
-        finally:
-            if waiter in self._waiters:
-                self._waiters.remove(waiter)
+
+    async def request_devkey(
+        self,
+        dst: int,
+        payload: bytes,
+        expected_opcode: int,
+        device_key: bytes,
+        *,
+        timeout: float = 8.0,
+    ) -> ReceivedMessage:
+        """Send an acknowledged Config Server request using DeviceKey."""
+        if len(device_key) != 16:
+            raise ValueError("device_key must be 16 bytes")
+        return await self._request_with_key(
+            dst,
+            payload,
+            expected_opcode,
+            key=device_key,
+            akf=False,
+            aid=0,
+            timeout=timeout,
+        )
