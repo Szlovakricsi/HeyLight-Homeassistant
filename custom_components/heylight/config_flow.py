@@ -99,7 +99,7 @@ def _decode_uploaded_qr(
 class HeylightConfigFlow(ConfigFlow, domain=DOMAIN):
     """Set up an imported or integration-managed HeyLight mesh."""
 
-    VERSION = 2
+    VERSION = 1
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -594,17 +594,11 @@ class HeylightOptionsFlow(OptionsFlow):
         if user_input is not None:
             return await self.async_step_init()
 
-        state = (
-            "saved_pending"
-            if self._commission_pending
-            else "not_provisioned"
-        )
         return self.async_show_form(
             step_id="provision_failed",
             data_schema=vol.Schema({}),
             description_placeholders={
                 "reason": self._commission_error or "unknown error",
-                "state": state,
             },
         )
 
