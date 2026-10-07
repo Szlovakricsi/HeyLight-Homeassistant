@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from bleak_retry_connector import (
@@ -180,6 +180,9 @@ async def async_provision_device(
     net_key: bytes,
     iv_index: int,
     allocate_unicast: Callable[[int], int],
+    on_data_ready: (
+        Callable[[ProvisioningResult], Awaitable[None] | None] | None
+    ) = None,
 ) -> ProvisioningResult:
     """Connect over PB-GATT and provision one selected device."""
     client = None
@@ -195,6 +198,7 @@ async def async_provision_device(
             net_key=net_key,
             iv_index=iv_index,
             allocate_unicast=allocate_unicast,
+            on_data_ready=on_data_ready,
         )
         return await provisioner.run()
     finally:
