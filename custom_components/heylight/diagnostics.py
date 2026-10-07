@@ -19,6 +19,8 @@ async def async_get_config_entry_diagnostics(
         timing = get_timing_state(coordinator, node)
         node_data = {
             "name": node.name,
+            "configured": node.configured,
+            "element_count": node.element_count,
             "unicast": f"0x{node.unicast:04x}",
             "cid": f"0x{node.cid:04x}",
             "pid": f"0x{node.pid:04x}",
@@ -52,6 +54,9 @@ async def async_get_config_entry_diagnostics(
     return {
         "network": {
             "mesh_name": network.mesh_name,
+            "display_name": network.title,
+            "managed": network.managed,
+            "iv_index": network.iv_index,
             "network_id": network.identifier,
             "available": coordinator.available,
             "connected_address": coordinator.connected_address,
