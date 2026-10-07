@@ -201,14 +201,13 @@ class HeylightConfigFlow(ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: ConfigEntry,
     ) -> OptionsFlow:
-        return HeylightOptionsFlow(config_entry)
+        return HeylightOptionsFlow()
 
 
 class HeylightOptionsFlow(OptionsFlow):
     """Provision and finish commissioning HeyLight nodes."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        self.config_entry = config_entry
+    def __init__(self) -> None:
         self._scan_task: asyncio.Task | None = None
         self._devices: list[UnprovisionedDevice] = []
         self._selected_device: UnprovisionedDevice | None = None
