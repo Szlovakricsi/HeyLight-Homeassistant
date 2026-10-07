@@ -1,4 +1,4 @@
-"""GATT bearers used by HeyLight Bluetooth Mesh."""
+"""GATT Mesh Proxy bearer."""
 
 from __future__ import annotations
 
@@ -7,17 +7,8 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from ..const import (
-    PROVISIONING_DATA_IN,
-    PROVISIONING_DATA_OUT,
-    PROXY_DATA_IN,
-    PROXY_DATA_OUT,
-)
-from .proxy_pdu import (
-    MSG_TYPE_PROVISIONING_PDU,
-    Reassembler,
-    segment,
-)
+from ..const import PROXY_DATA_IN, PROXY_DATA_OUT
+from .proxy_pdu import Reassembler, segment
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,7 +48,7 @@ class GattProxyBearer:
         except TimeoutError:
             task.add_done_callback(self._on_late_subscribe)
             self._subscribe_task = task
-            _LOGGGER.debug(
+            _LOGGER.debug(
                 "HeyLight start_notify not confirmed after %.1fs; "
                 "leaving subscription task running",
                 START_NOTIFY_TIMEOUT,
@@ -72,7 +63,7 @@ class GattProxyBearer:
             return
         exc = task.exception()
         if exc is not None:
-            self.failur = exc
+            self.failure = exc
             _LOGGER.warning(
                 "HeyLight Mesh Proxy notification subscription failed: %s",
                 exc,
@@ -109,85 +100,9 @@ class GattProxyBearer:
         try:
             complete = self._reassembler.feed(bytes(data))
         except Exception:
-            _LOGGGER.debug("dropping malformed Proxy PDU", exc_info=True)
+            _LOGGER.debug("dropping malformed Proxy PDU", exc_info=True)
             return
         if complete is None or self._on_message is None:
             return
         msg_type, payload = complete
         self._on_message(msg_type, payload)
-
-
-class GattProvisioningBearer:
-    """PB-GATT bearer for a connected unprovisioned Mesh device."""
-
-    def __init__(self, client: Any) -> None:
-        self._client = client
-        self._reassembler = Reassembler()
-        self._queue: asyncio.Queue[bytes] = asyncio.Queue()
-        self._started = False
-
-    @property
-    def max_frame(self) -> int:
-        return DEFAULT_MAX_FRAME
-
-    async def start(self) -> None:
-        if self._started:
-            return
-        await self._client.start_notify(
-            PROVISIONING_DATA_OUT, self._handle_notify
-        )
-        self._started = True
-
-    async def stop(self) -> None:
-        if not self._started:
-            return
-        self._started = False
-        try:
-            await self._client.stop_notify(PROVISIONING_DATA_OUT)
-        except Exception:
-            _LOGGER.debug(
-                "provisioning stop_notify failed", exc_info=True
-           )
-
-    async def send(self, provisioning_pdu: bytes) -> None:
-        if not bool(getattr(self._client, "is_connected", True)):
-            raise ConnectionError(
-                "HeyLight provisioning Bluetooth link is disconnected"
-            )
-        for frame in segment(
-            MSG_TYPE_PROVISIONING_PDU,
-            provisioning_pdu,
-            self.max_frame,
-        ):
-            await self._client.write_gatt_char(
-                PROVISIONING_DATA_IN, frame, response=False
-            )
-
-    async def receive(self, *, timeout: float = 10.0) -> bytes:
-        try:
-            return await asyncio.wait_for(
-                self._queue.get(), timeout=timeout
-            )
-        except TimeoutError as exc:
-            raise TimeoutError(
-                f"no provisioning response within {timeout:.0f}s"
-            ) from exc
-
-    def _handle_notify(self, _char: Any, data: bytearray) -> None:
-        try:
-            complete = self._reassembler.feed(bytes(data))
-        except Exception:
-            _LOGGGER.debug(
-                "dropping malformed provisioning Proxy PDU",
-                exc_info=True,
-            )
-            return
-        if complete is None:
-            return
-        msg_type, payload = complete
-        if msg_type != MSG_TYPE_PROVISIONING_PDU:
-            _LOGGGER.debug(
-                "ignoring PB-GATT message type 0x%02x", msg_type
-            )
-            return
-        self._queue.put_nowait(payload)
