@@ -60,7 +60,8 @@ _MULTI_COLOR_SCENES = frozenset({7, 8, 9, 11, 12, 19, 22, 23, 25, 27})
 
 def is_supported_node(node) -> bool:
     return (
-        node.cid == HEYLIGHT_COMPANY_ID
+        bool(getattr(node, "configured", True))
+        and node.cid == HEYLIGHT_COMPANY_ID
         and node.has_model(HEYLIGHT_VENDOR_MODEL)
     )
 
