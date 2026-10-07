@@ -3,7 +3,14 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect a HeyLight mesh",
+        "title": "Set up HeyLight",
+        "menu_options": {
+          "import_share": "Import an existing HeyLight mesh",
+          "create_network": "Create a new HeyLight mesh"
+        }
+      },
+      "import_share": {
+        "title": "Import an existing HeyLight mesh",
         "description": "Paste the full text decoded from Heylight's Share Device QR code, or upload an image containing that QR code. Use exactly one method.",
         "data": {
           "qr_text": "Share Device QR text",
@@ -12,6 +19,16 @@
         "data_description": {
           "qr_text": "Paste the JSON text beginning with {\"agent\":...",
           "qr_image": "PNG/JPEG/WebP photo or screenshot of the QR code."
+        }
+      },
+      "create_network": {
+        "title": "Create a new HeyLight mesh",
+        "description": "Home Assistant will create and own a new Bluetooth Mesh network with random 128-bit network and application keys. Reset a light to pairing mode after setup, then add it from the integration options.",
+        "data": {
+          "network_name": "Network name"
+        },
+        "data_description": {
+          "network_name": "A friendly name used only in Home Assistant."
         }
       }
     },
@@ -23,6 +40,57 @@
     },
     "abort": {
       "already_configured": "This HeyLight mesh is already configured."
+    }
+  },
+  "options": {
+    "progress": {
+      "title": "HeyLight device commissioning",
+      "scan_unprovisioned": "Scanning for unprovisioned Bluetooth Mesh devices. Keep the new light in pairing/reset mode and close to a Bluetooth adapter.",
+      "provision_device": "Provisioning the selected device, assigning its Mesh address, installing the network keys, reading Composition Data, and binding the models.",
+      "finish_commissioning": "Finishing Mesh configuration for the already provisioned device."
+    },
+    "step": {
+      "init": {
+        "title": "Manage HeyLight mesh",
+        "menu_options": {
+          "add_device": "Add a new device",
+          "finish_setup": "Finish setup of a provisioned device"
+        }
+      },
+      "select_device": {
+        "title": "Select a device",
+        "description": "Choose the unprovisioned Bluetooth Mesh device to add. If none are listed, submit this page to scan again.",
+        "data": {
+          "device": "Device"
+        }
+      },
+      "device_details": {
+        "title": "Add device to mesh",
+        "description": "Give the device a Home Assistant name. For an imported HeyLight network you must also choose an unused unicast address because a Share Device QR code may not contain every node in the original mesh.",
+        "data": {
+          "device_name": "Device name",
+          "unicast_address": "Unicast address"
+        },
+        "data_description": {
+          "device_name": "Name shown in Home Assistant.",
+          "unicast_address": "Unused primary element address, for example 0x0010. Home Assistant validates it against nodes known to this integration."
+        }
+      },
+      "finish_setup": {
+        "title": "Finish device setup",
+        "description": "Select a device that completed provisioning but did not finish Composition/AppKey/model configuration.",
+        "data": {
+          "device": "Provisioned device"
+        }
+      },
+      "provision_failed": {
+        "title": "Device setup did not complete",
+        "description": "Reason: {reason}\n\nIf Bluetooth Mesh provisioning had already completed, the DeviceKey and address were saved and **Finish setup of a provisioned device** will be available. If provisioning itself failed, put the light back into pairing/reset mode and try Add device again."
+      }
+    },
+    "error": {
+      "no_unprovisioned_devices": "No connectable unprovisioned Bluetooth Mesh device was found. Put the light into pairing/reset mode, keep it nearby, then submit to scan again.",
+      "invalid_unicast_address": "Enter an unused unicast address from 0x0001 to 0x7FFE, for example 0x0010."
     }
   }
 }
