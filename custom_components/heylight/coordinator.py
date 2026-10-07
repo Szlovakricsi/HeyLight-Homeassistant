@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
 from .btmesh.controller import HeylightMeshController
-from .const import DEFAULT_SOURCE_ADDRESS, IV_INDEX
+from .const import DEFAULT_SOURCE_ADDRESS
 from .mesh_transport import (
     async_connect_bearer,
     async_register_proxy_callback,
@@ -27,7 +27,7 @@ RECONNECT_SECONDS = 5
 
 
 class HeylightCoordinator:
-    """One runtime per imported HeyLight mesh network."""
+    """One runtime per HeyLight mesh network."""
 
     def __init__(
         self,
@@ -52,6 +52,7 @@ class HeylightCoordinator:
         self._background_task: asyncio.Task | None = None
         self._unregister_bluetooth: Callable[[], None] | None = None
         self._stopping = False
+        self._provisioning = False
         self.reconnect_attempts = 0
         self.successful_connections = 0
         self.last_connection_error: str | None = None
@@ -62,13 +63,10 @@ class HeylightCoordinator:
         )
         self._seq = 0
 
-    async def async_start(self) -> None:
-        stored = await self._store.async_load() or {}
-        try:
-            saved = int(stored.get("seq", 0))
-        except (TypeError, ValueError):
-            saved = 0
-        self._seq = min(saved + SEQ_SAFETY_MARGIN, 0xFFFFFE)
+    def _register_proxy_callback(self) -> None:
+        if self._unregister_bluetooth is not None:
+            self._unregister_bluetooth()
+            self._unregister_bluetooth = None
 
         self._unregister_bluetooth = async_register_proxy_callback(
             self.hass,
@@ -78,6 +76,16 @@ class HeylightCoordinator:
             self.network.proxy_macs,
             self._proxy_seen,
         )
+
+    async def async_start(self) -> None:
+        stored = await self._store.async_load() or {}
+        try:
+            saved = int(stored.get("seq", 0))
+        except (TypeError, ValueError):
+            saved = 0
+        self._seq = min(saved + SEQ_SAFETY_MARGIN, 0xFFFFFE)
+
+        self._register_proxy_callback()
         self._background_task = self.hass.async_create_background_task(
             self._connection_loop(),
             f"HeyLight connection {self.network.identifier}",
@@ -99,6 +107,51 @@ class HeylightCoordinator:
 
         await self._disconnect()
         await self._save_seq()
+
+    async def async_replace_network(
+        self, network: HeylightNetwork
+    ) -> None:
+        """Replace persisted mesh data and refresh Bluetooth matching."""
+        if network.identifier != self.network.identifier:
+            raise ValueError(
+                "cannot replace a coordinator with a different mesh network"
+            )
+        self.network = network
+        self._register_proxy_callback()
+        self._wake.set()
+
+    async def async_begin_provisioning(self) -> None:
+        """Release the proxy connection while PB-GATT uses Bluetooth."""
+        self._provisioning = True
+        self._wake.set()
+
+        async with self._command_lock:
+            await self._disconnect()
+
+    async def async_end_provisioning(self) -> None:
+        """Allow normal Mesh Proxy connections again."""
+        self._provisioning = False
+        self._wake.set()
+
+    async def async_wait_connected(
+        self, *, timeout: float = 40.0
+    ) -> HeylightMeshController:
+        """Wait for a matching Mesh Proxy after provisioning."""
+        deadline = asyncio.get_running_loop().time() + timeout
+        last_error: Exception | None = None
+
+        while asyncio.get_running_loop().time() < deadline:
+            try:
+                return await self._ensure_connected()
+            except Exception as exc:
+                last_error = exc
+                await asyncio.sleep(1.0)
+
+        if last_error is not None:
+            raise TimeoutError(
+                f"HeyLight Mesh Proxy did not appear: {last_error}"
+            ) from last_error
+        raise TimeoutError("HeyLight Mesh Proxy did not appear")
 
     def async_add_listener(
         self, listener: Callable[[], None]
@@ -134,15 +187,23 @@ class HeylightCoordinator:
                         None,
                     )
                 )
-                if not client_connected or bearer_failed:
+                if (
+                    self._provisioning
+                    or not client_connected
+                    or bearer_failed
+                ):
                     self.last_disconnect_reason = (
-                        "link check failed"
-                        if not client_connected
-                        else "notification subscription failed"
+                        "provisioning requested"
+                        if self._provisioning
+                        else (
+                            "link check failed"
+                            if not client_connected
+                            else "notification subscription failed"
+                        )
                     )
                     await self._disconnect()
 
-            if self._controller is None:
+            if self._controller is None and not self._provisioning:
                 self.reconnect_attempts += 1
                 try:
                     await self._ensure_connected()
@@ -163,10 +224,18 @@ class HeylightCoordinator:
                 pass
 
     async def _ensure_connected(self) -> HeylightMeshController:
+        if self._provisioning:
+            raise ConnectionError(
+                "Mesh Proxy connection is paused for provisioning"
+            )
         if self._controller is not None:
             return self._controller
 
         async with self._connect_lock:
+            if self._provisioning:
+                raise ConnectionError(
+                    "Mesh Proxy connection is paused for provisioning"
+                )
             if self._controller is not None:
                 return self._controller
 
@@ -185,11 +254,20 @@ class HeylightCoordinator:
             client, bearer = await async_connect_bearer(
                 self.hass, address
             )
+            if self._provisioning:
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
+                raise ConnectionError(
+                    "Mesh Proxy connection was paused during connection"
+                )
+
             controller = HeylightMeshController(
                 bearer,
                 net_key=self.network.net_key,
                 app_key=self.network.app_key,
-                iv_index=IV_INDEX,
+                iv_index=self.network.iv_index,
                 src_addr=DEFAULT_SOURCE_ADDRESS,
                 seq=self._seq,
             )
