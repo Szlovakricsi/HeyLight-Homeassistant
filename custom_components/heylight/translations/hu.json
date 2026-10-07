@@ -54,7 +54,8 @@
         "title": "HeyLight mesh kezelése",
         "menu_options": {
           "add_device": "Új eszköz hozzáadása",
-          "finish_setup": "Provisionált eszköz beállításának befejezése"
+          "finish_setup": "Provisionált eszköz beállításának befejezése",
+          "forget_pending": "Félbemaradt eszköz elfelejtése"
         }
       },
       "select_device": {
@@ -85,12 +86,21 @@
       },
       "provision_failed": {
         "title": "Az eszköz beállítása nem fejeződött be",
-        "description": "Hiba: {reason}\n\nHa a Bluetooth Mesh provisioning már sikeresen befejeződött, a DeviceKey és a cím el lett mentve, ezért megjelenik a **Provisionált eszköz beállításának befejezése** menüpont. Ha maga a provisioning hibázott, állítsd vissza a lámpát párosítási/reset módba, majd próbáld újra az Új eszköz hozzáadása lehetőséget."
+        "description": "Hiba: {reason}\n\nHa megjelenik a **Provisionált eszköz beállításának befejezése** menüpont, először azt próbáld meg. Ha az eszköz nem jelenik meg Mesh Proxyként és már visszaállítottad párosítási/reset módba, a **Félbemaradt eszköz elfelejtése** után újra hozzáadhatod."
+      },
+      "forget_pending": {
+        "title": "Félbemaradt eszköz elfelejtése",
+        "description": "Ezt csak akkor használd, ha az eszközt már visszaállítottad gyári/párosítási állapotba, vagy biztos vagy benne, hogy a provisioning nem fejeződött be. Ha egy ténylegesen provisionált eszköz DeviceKey-ét törlöd reset nélkül, a Home Assistant többé nem tudja konfigurálni.",
+        "data": {
+          "device": "Félbemaradt eszköz",
+          "confirm": "Megerősítem, hogy az eszközt reseteltem, vagy a provisioning nem fejeződött be"
+        }
       }
     },
     "error": {
       "no_unprovisioned_devices": "Nem található csatlakoztatható, provisionálatlan Bluetooth Mesh eszköz. Állítsd a lámpát párosítási/reset módba, tartsd közel, majd indítsd újra a keresést.",
-      "invalid_unicast_address": "Adj meg egy szabad unicast címet 0x0001 és 0x7FFE között, például 0x0010."
+      "invalid_unicast_address": "Adj meg egy szabad unicast címet 0x0001 és 0x7FFE között, például 0x0010.",
+      "confirm_forget_required": "A törlés előtt erősítsd meg, hogy az eszközt resetelted, vagy a provisioning biztosan nem fejeződött be."
     }
   }
 }
