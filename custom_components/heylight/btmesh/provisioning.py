@@ -7,7 +7,7 @@ authentication.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 import hmac
 import os
@@ -108,6 +108,9 @@ class MeshProvisioner:
         net_key: bytes,
         iv_index: int,
         allocate_unicast: Callable[[int], int],
+        on_data_ready: (
+            Callable[[ProvisioningResult], Awaitable[None] | None] | None
+        ) = None,
     ) -> None:
         if len(net_key) != 16:
             raise ValueError("net_key must be 16 bytes")
@@ -118,6 +121,7 @@ class MeshProvisioner:
         self._net_key = bytes(net_key)
         self._iv_index = int(iv_index)
         self._allocate_unicast = allocate_unicast
+        self._on_data_ready = on_data_ready
 
     async def _send(self, pdu_type: int, payload: bytes = b"") -> None:
         await self._bearer.send(bytes([pdu_type]) + payload)
@@ -238,13 +242,24 @@ class MeshProvisioner:
         if len(encrypted) != 33:
             raise ProvisioningError("invalid encrypted provisioning-data size")
 
+        result = ProvisioningResult(
+            device_key=device_key,
+            unicast=unicast,
+            element_count=capabilities.num_elements,
+        )
+
+        # Persist the DeviceKey/address before crossing the irreversible
+        # Provisioning Data boundary. If the UI is closed or the Complete PDU
+        # is lost after this point, Home Assistant can still resume Config
+        # Server setup instead of losing the node credentials.
+        if self._on_data_ready is not None:
+            callback_result = self._on_data_ready(result)
+            if callback_result is not None:
+                await callback_result
+
         await self._send(PDU_DATA, encrypted)
         complete = await self._receive(PDU_COMPLETE, timeout=20.0)
         if complete:
             raise ProvisioningError("Provisioning Complete contained payload")
 
-        return ProvisioningResult(
-            device_key=device_key,
-            unicast=unicast,
-            element_count=capabilities.num_elements,
-        )
+        return result
