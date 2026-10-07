@@ -457,6 +457,42 @@ def append_provisioned_node(
     return result
 
 
+def remove_pending_node(
+    text: str,
+    *,
+    unicast: int,
+) -> str:
+    """Forget a node whose commissioning did not complete."""
+    data = json.loads(text)
+    raw_nodes = data.get("nodes")
+    if not isinstance(raw_nodes, list):
+        raise ShareDataError("mesh payload has an invalid nodes list")
+
+    target = None
+    for item in raw_nodes:
+        if int(item.get("a", -1)) == int(unicast):
+            target = item
+            break
+
+    if target is None:
+        raise ShareDataError(
+            f"pending node 0x{int(unicast):04X} is not stored"
+        )
+    if bool(target.get("configured", True)):
+        raise ShareDataError(
+            "configured nodes cannot be removed with pending-node cleanup"
+        )
+
+    raw_nodes.remove(target)
+    data["sno"] = int(data.get("sno", 0) or 0) + 1
+
+    result = json.dumps(
+        data, separators=(",", ":"), ensure_ascii=False
+    )
+    parse_share_text(result)
+    return result
+
+
 def finalize_provisioned_node(
     text: str,
     *,
