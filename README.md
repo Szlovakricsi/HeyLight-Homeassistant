@@ -15,10 +15,9 @@ After setup, Home Assistant can expose the light as normal entities and the bund
 
 ## Real Home Assistant dashboard card
 
-The screenshot below is from a real Home Assistant installation using the integration — it is **not a generated mock-up**.
-
 <p align="center">
-  <img src="docs/images/heylight-tree-card-real.jpg" alt="Real HeyLight Tree Home Assistant card" width="430">
+  <img src="docs/images/heylight-tree-card-light.webp" alt="HeyLight Tree card in Home Assistant light theme" width="390">
+  <img src="docs/images/heylight-tree-card-dark.webp" alt="HeyLight Tree card in Home Assistant dark theme" width="390">
 </p>
 
 The card includes:
