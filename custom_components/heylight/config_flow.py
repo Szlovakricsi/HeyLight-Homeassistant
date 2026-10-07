@@ -52,6 +52,7 @@ CONF_NETWORK_NAME = "network_name"
 CONF_DEVICE = "device"
 CONF_DEVICE_NAME = "device_name"
 CONF_UNICAST_ADDRESS = "unicast_address"
+CONF_CONFIRM = "confirm"
 
 STEP_IMPORT_SCHEMA = vol.Schema(
     {
@@ -578,29 +579,37 @@ class HeylightOptionsFlow(OptionsFlow):
             )
             for node in pending
         }
+        errors: dict[str, str] = {}
 
         if user_input is not None:
-            unicast = int(str(user_input[CONF_DEVICE]), 0)
-            updated_text = remove_pending_node(
-                self.config_entry.data[CONF_SHARE_JSON],
-                unicast=unicast,
-            )
-            new_data = dict(self.config_entry.data)
-            new_data[CONF_SHARE_JSON] = updated_text
-            self.hass.config_entries.async_update_entry(
-                self.config_entry,
-                data=new_data,
-            )
-            await self._coordinator.async_replace_network(
-                parse_share_text(updated_text)
-            )
-            return await self.async_step_init()
+            if not bool(user_input.get(CONF_CONFIRM, False)):
+                errors[CONF_CONFIRM] = "confirm_forget_required"
+            else:
+                unicast = int(str(user_input[CONF_DEVICE]), 0)
+                updated_text = remove_pending_node(
+                    self.config_entry.data[CONF_SHARE_JSON],
+                    unicast=unicast,
+                )
+                new_data = dict(self.config_entry.data)
+                new_data[CONF_SHARE_JSON] = updated_text
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data=new_data,
+                )
+                await self._coordinator.async_replace_network(
+                    parse_share_text(updated_text)
+                )
+                return await self.async_step_init()
 
         return self.async_show_form(
             step_id="forget_pending",
             data_schema=vol.Schema(
-                {vol.Required(CONF_DEVICE): vol.In(choices)}
+                {
+                    vol.Required(CONF_DEVICE): vol.In(choices),
+                    vol.Required(CONF_CONFIRM, default=False): bool,
+                }
             ),
+            errors=errors,
         )
 
     async def async_step_finish_progress(
