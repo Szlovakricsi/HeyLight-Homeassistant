@@ -54,7 +54,8 @@
         "title": "Manage HeyLight mesh",
         "menu_options": {
           "add_device": "Add a new device",
-          "finish_setup": "Finish setup of a provisioned device"
+          "finish_setup": "Finish setup of a provisioned device",
+          "forget_pending": "Forget interrupted device"
         }
       },
       "select_device": {
@@ -85,12 +86,21 @@
       },
       "provision_failed": {
         "title": "Device setup did not complete",
-        "description": "Reason: {reason}\n\nIf Bluetooth Mesh provisioning had already completed, the DeviceKey and address were saved and **Finish setup of a provisioned device** will be available. If provisioning itself failed, put the light back into pairing/reset mode and try Add device again."
+        "description": "Reason: {reason}\n\nIf **Finish setup of a provisioned device** is available, try that first. If the device never appears as a Mesh Proxy and you have reset it back to pairing mode, use **Forget interrupted device** before adding it again."
+      },
+      "forget_pending": {
+        "title": "Forget interrupted device",
+        "description": "Use this only after factory-resetting the device back to pairing mode, or when you are certain provisioning did not complete. Deleting the DeviceKey of a device that is actually provisioned makes it unconfigurable from Home Assistant until it is reset.",
+        "data": {
+          "device": "Interrupted device",
+          "confirm": "I confirm the device was reset, or provisioning definitely did not complete"
+        }
       }
     },
     "error": {
       "no_unprovisioned_devices": "No connectable unprovisioned Bluetooth Mesh device was found. Put the light into pairing/reset mode, keep it nearby, then submit to scan again.",
-      "invalid_unicast_address": "Enter an unused unicast address from 0x0001 to 0x7FFE, for example 0x0010."
+      "invalid_unicast_address": "Enter an unused unicast address from 0x0001 to 0x7FFE, for example 0x0010.",
+      "confirm_forget_required": "Confirm that the device was reset or that provisioning definitely did not complete before forgetting it."
     }
   }
 }
