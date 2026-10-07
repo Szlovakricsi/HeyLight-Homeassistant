@@ -9,7 +9,7 @@ This is an independent interoperability project and is **not affiliated with Hey
 
 ## What this project does
 
-The official HeyLight application uses Bluetooth SIG Mesh with Telink vendor commands to control the light string. This integration imports the already-created HeyLight mesh into Home Assistant and then controls the lights **locally over Bluetooth**, without requiring the HeyLight cloud for normal operation.
+The official HeyLight application uses Bluetooth SIG Mesh with Telink vendor commands to control the light string. This integration can either **import an existing HeyLight mesh** from the app or **create and manage a new Bluetooth Mesh network directly in Home Assistant**, then control the lights locally over Bluetooth without requiring the HeyLight cloud for normal operation.
 
 After setup, Home Assistant can expose the light as normal entities and the bundled **HeyLight Tree** card provides a visual controller that follows the selected effect and colours.
 
@@ -35,26 +35,35 @@ The card includes:
 
 The animated tree is a **visual representation of the active HeyLight effect**, not a pixel-perfect map of the physical LED positions.
 
-## Important setup limitation
+## Setup options
 
-### Setup currently has to start in the official HeyLight app
+HeyLight now supports two setup paths.
 
-At the moment, Home Assistant **cannot commission a brand-new HeyLight light string directly**.
+### Create a new mesh directly in Home Assistant
 
-The light must first be added and working in the official **HeyLight application**. The integration then imports the Bluetooth Mesh credentials using the app's **Share Device** function.
+1. Reset the light into Bluetooth Mesh provisioning/pairing mode.
+2. In Home Assistant, add the **HeyLight** integration.
+3. Choose **Create a new HeyLight mesh**.
+4. Open the integration's **Configure** menu.
+5. Choose **Add a new device**.
+6. Home Assistant scans for unprovisioned Bluetooth Mesh devices, provisions the selected device, assigns its unicast address, reads Composition Data and configures the supported models.
 
-Current setup flow:
+Home Assistant stores the generated NetKey, AppKey, DeviceKey and node information in the config entry. The managed mesh can later be extended with additional reset/unprovisioned devices.
+
+### Import an existing HeyLight mesh
+
+You can still keep a mesh created by the official HeyLight app:
 
 1. Pair and configure the light string in the official HeyLight app.
-2. Open **Share Device** in the HeyLight app.
+2. Open **Share Device** in the app.
 3. Display the generated QR code.
-4. In Home Assistant, add the **HeyLight** integration.
-5. Upload a screenshot/photo of the QR code, or paste the decoded QR JSON text.
-6. Home Assistant imports the mesh information and connects to the light locally.
-
-Direct Home Assistant provisioning may be added later, but it is **not implemented yet**.
+4. Add the **HeyLight** integration in Home Assistant.
+5. Choose **Import an existing HeyLight mesh**.
+6. Upload a screenshot/photo of the QR code, or paste the decoded QR JSON text.
 
 > **Security warning:** never publish your real Share Device QR code or its decoded JSON. It contains Bluetooth Mesh network/application/device key material.
+
+> **Beta note:** direct provisioning is new in v0.6.0 and still needs testing across more HeyLight/Telink hardware and firmware variants.
 
 ## Tested hardware
 
@@ -74,6 +83,9 @@ Other HeyLight products using the same Telink vendor model **may work**, but the
 - local Bluetooth Mesh communication through Home Assistant's Bluetooth stack
 - no HeyLight cloud required after mesh import
 - QR-code / Share Device import
+- Home Assistant-managed Bluetooth Mesh creation
+- direct PB-GATT provisioning of reset/unprovisioned devices
+- automatic DeviceKey persistence, Composition Data discovery, AppKey installation and model binding
 - power on/off
 - RGB colour control
 - brightness control
@@ -92,28 +104,31 @@ The integration does not emulate the HeyLight cloud. Instead, it talks directly 
 In simplified form:
 
 ```text
-HeyLight app
-    │
-    │ Share Device QR
-    ▼
-Home Assistant HeyLight integration
-    │
-    │ imported Mesh NetKey / AppKey / node data
-    ▼
-Home Assistant Bluetooth stack
-    │
-    │ Bluetooth Mesh Proxy
-    ▼
-HeyLight / Telink controller
-    │
-    ├── Power
-    ├── Scene / effect
-    ├── RGB palette
-    ├── Effect speed
-    └── Scheduler / timing
+                    ┌───────────────────────────┐
+                    │ Official HeyLight app     │
+                    │ Share Device QR (optional)│
+                    └─────────────┬─────────────┘
+                                  │ import
+                                  ▼
+┌───────────────────────┐   Home Assistant HeyLight integration
+│ Reset/unprovisioned   │──────────────┐
+│ HeyLight device       │ PB-GATT      │
+└───────────────────────┘ provisioning │
+                                       ▼
+                              Bluetooth Mesh network
+                                       │
+                                       │ Mesh Proxy
+                                       ▼
+                              HeyLight / Telink controller
+                                       │
+                                       ├── Power
+                                       ├── Scene / effect
+                                       ├── RGB palette
+                                       ├── Effect speed
+                                       └── Scheduler / timing
 ```
 
-The imported mesh information is stored in the Home Assistant config entry. Commands are then sent locally using Bluetooth Mesh messages and the reverse-engineered Telink vendor protocol used by the tested light string.
+For integration-managed networks, Home Assistant generates and stores the Mesh NetKey/AppKey and each provisioned node's DeviceKey. Imported Share Device networks keep using the credentials supplied by the HeyLight app.
 
 ## Installation with HACS
 
@@ -129,7 +144,7 @@ The imported mesh information is stored in the Home Assistant config entry. Comm
 5. Install **HeyLight**.
 6. Restart Home Assistant.
 7. Go to **Settings → Devices & services → Add integration → HeyLight**.
-8. Import the Share Device QR from the official HeyLight app.
+8. Choose either **Create a new HeyLight mesh** or **Import an existing HeyLight mesh**.
 
 ## Example Share Device data
 
@@ -252,8 +267,9 @@ It is usable on the tested DekorTrend hardware, but users should expect protocol
 
 Current limitations include:
 
-- new lights cannot yet be commissioned directly from Home Assistant
-- the initial mesh must be created in the official HeyLight app and imported through **Share Device**
+- direct provisioning is new in v0.6.0 and has not yet been verified across all HeyLight/Telink hardware and firmware variants
+- imported Share Device meshes do not necessarily contain every node from the original network, so adding another device to an imported mesh may require manually choosing a known-free unicast address
+- only the No-OOB P-256/AES-CMAC provisioning path used by the tested HeyLight family is currently implemented
 - compatibility is only verified on the hardware listed above
 - effect behaviour can differ between HeyLight product families or firmware versions
 - the dashboard animation reproduces the visual behaviour of the effects, but not the exact physical LED geometry of every string installation

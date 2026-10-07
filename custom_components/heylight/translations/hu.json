@@ -3,7 +3,14 @@
   "config": {
     "step": {
       "user": {
-        "title": "HeyLight mesh hozzáadása",
+        "title": "HeyLight beállítása",
+        "menu_options": {
+          "import_share": "Meglévő HeyLight mesh importálása",
+          "create_network": "Új HeyLight mesh létrehozása"
+        }
+      },
+      "import_share": {
+        "title": "Meglévő HeyLight mesh importálása",
         "description": "Illeszd be a Heylight Share Device QR-kód teljes dekódolt szövegét, vagy tölts fel egy képet a QR-kódról. A két módszer közül csak az egyiket használd.",
         "data": {
           "qr_text": "Share Device QR szövege",
@@ -12,6 +19,16 @@
         "data_description": {
           "qr_text": "A teljes JSON szöveget illeszd be, amely így kezdődik: {\"agent\":...",
           "qr_image": "PNG/JPEG/WebP kép vagy képernyőkép a QR-kódról."
+        }
+      },
+      "create_network": {
+        "title": "Új HeyLight mesh létrehozása",
+        "description": "A Home Assistant létrehoz és kezel egy új Bluetooth Mesh hálózatot véletlenszerű, 128 bites hálózati és alkalmazáskulcsokkal. A létrehozás után állítsd a lámpát párosítási/reset módba, majd az integráció Beállítások menüjéből add hozzá.",
+        "data": {
+          "network_name": "Hálózat neve"
+        },
+        "data_description": {
+          "network_name": "A Home Assistantban megjelenő név."
         }
       }
     },
@@ -23,6 +40,67 @@
     },
     "abort": {
       "already_configured": "Ez a HeyLight mesh már konfigurálva van."
+    }
+  },
+  "options": {
+    "progress": {
+      "title": "HeyLight eszköz hozzáadása",
+      "scan_unprovisioned": "Párosítatlan Bluetooth Mesh eszközök keresése. Tartsd az új lámpát párosítási/reset módban és egy Bluetooth adapter közelében.",
+      "provision_device": "Az eszköz provisionálása folyamatban: mesh cím kiosztása, hálózati kulcsok telepítése, Composition Data kiolvasása és a modellek hozzárendelése.",
+      "finish_commissioning": "A már provisionált eszköz Mesh konfigurációjának befejezése."
+    },
+    "step": {
+      "init": {
+        "title": "HeyLight mesh kezelése",
+        "menu_options": {
+          "add_device": "Új eszköz hozzáadása",
+          "finish_setup": "Provisionált eszköz beállításának befejezése",
+          "forget_pending": "Félbemaradt eszköz elfelejtése"
+        }
+      },
+      "select_device": {
+        "title": "Eszköz kiválasztása",
+        "description": "Válaszd ki a hozzáadandó, még nem provisionált Bluetooth Mesh eszközt. Ha a lista üres, küldd el újra ezt az oldalt az ismételt kereséshez.",
+        "data": {
+          "device": "Eszköz"
+        }
+      },
+      "device_details": {
+        "title": "Eszköz hozzáadása a mesh hálózathoz",
+        "description": "Adj nevet az eszköznek. Importált HeyLight hálózatnál egy szabad unicast címet is meg kell adni, mert a Share Device QR-kód nem feltétlenül tartalmazza az eredeti mesh összes node-ját.",
+        "data": {
+          "device_name": "Eszköz neve",
+          "unicast_address": "Unicast cím"
+        },
+        "data_description": {
+          "device_name": "A Home Assistantban megjelenő név.",
+          "unicast_address": "Szabad elsődleges elemcím, például 0x0010. A Home Assistant ellenőrzi, hogy nem ütközik-e az általa ismert node-okkal."
+        }
+      },
+      "finish_setup": {
+        "title": "Eszköz beállításának befejezése",
+        "description": "Válaszd ki azt az eszközt, amelynek a provisioningje már sikerült, de a Composition/AppKey/modell konfiguráció nem fejeződött be.",
+        "data": {
+          "device": "Provisionált eszköz"
+        }
+      },
+      "provision_failed": {
+        "title": "Az eszköz beállítása nem fejeződött be",
+        "description": "Hiba: {reason}\n\nHa megjelenik a **Provisionált eszköz beállításának befejezése** menüpont, először azt próbáld meg. Ha az eszköz nem jelenik meg Mesh Proxyként és már visszaállítottad párosítási/reset módba, a **Félbemaradt eszköz elfelejtése** után újra hozzáadhatod."
+      },
+      "forget_pending": {
+        "title": "Félbemaradt eszköz elfelejtése",
+        "description": "Ezt csak akkor használd, ha az eszközt már visszaállítottad gyári/párosítási állapotba, vagy biztos vagy benne, hogy a provisioning nem fejeződött be. Ha egy ténylegesen provisionált eszköz DeviceKey-ét törlöd reset nélkül, a Home Assistant többé nem tudja konfigurálni.",
+        "data": {
+          "device": "Félbemaradt eszköz",
+          "confirm": "Megerősítem, hogy az eszközt reseteltem, vagy a provisioning nem fejeződött be"
+        }
+      }
+    },
+    "error": {
+      "no_unprovisioned_devices": "Nem található csatlakoztatható, provisionálatlan Bluetooth Mesh eszköz. Állítsd a lámpát párosítási/reset módba, tartsd közel, majd indítsd újra a keresést.",
+      "invalid_unicast_address": "Adj meg egy szabad unicast címet 0x0001 és 0x7FFE között, például 0x0010.",
+      "confirm_forget_required": "A törlés előtt erősítsd meg, hogy az eszközt resetelted, vagy a provisioning biztosan nem fejeződött be."
     }
   }
 }

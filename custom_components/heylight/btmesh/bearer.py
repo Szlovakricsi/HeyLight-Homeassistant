@@ -1,4 +1,4 @@
-"""GATT Mesh Proxy bearer."""
+"""GATT bearers used by HeyLight Bluetooth Mesh."""
 
 from __future__ import annotations
 
@@ -7,8 +7,17 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from ..const import PROXY_DATA_IN, PROXY_DATA_OUT
-from .proxy_pdu import Reassembler, segment
+from ..const import (
+    PROVISIONING_DATA_IN,
+    PROVISIONING_DATA_OUT,
+    PROXY_DATA_IN,
+    PROXY_DATA_OUT,
+)
+from .proxy_pdu import (
+    MSG_TYPE_PROVISIONING_PDU,
+    Reassembler,
+    segment,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,3 +115,79 @@ class GattProxyBearer:
             return
         msg_type, payload = complete
         self._on_message(msg_type, payload)
+
+
+class GattProvisioningBearer:
+    """PB-GATT bearer for an unprovisioned Bluetooth Mesh device."""
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+        self._reassembler = Reassembler()
+        self._queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self._started = False
+
+    @property
+    def max_frame(self) -> int:
+        """Use the minimum ATT payload for maximum adapter compatibility."""
+        return DEFAULT_MAX_FRAME
+
+    async def start(self) -> None:
+        """Subscribe to Mesh Provisioning Data Out."""
+        await self._client.start_notify(
+            PROVISIONING_DATA_OUT, self._handle_notify
+        )
+        self._started = True
+
+    async def stop(self) -> None:
+        if not self._started:
+            return
+        self._started = False
+        try:
+            await self._client.stop_notify(PROVISIONING_DATA_OUT)
+        except Exception:
+            _LOGGER.debug(
+                "HeyLight provisioning stop_notify failed",
+                exc_info=True,
+            )
+
+    async def send(self, payload: bytes) -> None:
+        """Send one complete Mesh Provisioning PDU."""
+        if not bool(getattr(self._client, "is_connected", True)):
+            raise ConnectionError("HeyLight provisioning link is disconnected")
+
+        for frame in segment(
+            MSG_TYPE_PROVISIONING_PDU,
+            payload,
+            self.max_frame,
+        ):
+            await self._client.write_gatt_char(
+                PROVISIONING_DATA_IN,
+                frame,
+                response=False,
+            )
+
+    async def receive(self, *, timeout: float = 15.0) -> bytes:
+        """Wait for one complete Mesh Provisioning PDU."""
+        return await asyncio.wait_for(self._queue.get(), timeout=timeout)
+
+    def _handle_notify(self, _char: Any, data: bytearray) -> None:
+        try:
+            complete = self._reassembler.feed(bytes(data))
+        except Exception:
+            _LOGGER.debug(
+                "dropping malformed Provisioning PDU",
+                exc_info=True,
+            )
+            return
+
+        if complete is None:
+            return
+
+        msg_type, payload = complete
+        if msg_type != MSG_TYPE_PROVISIONING_PDU:
+            _LOGGER.debug(
+                "ignoring PB-GATT message type 0x%02X",
+                msg_type,
+            )
+            return
+        self._queue.put_nowait(payload)
