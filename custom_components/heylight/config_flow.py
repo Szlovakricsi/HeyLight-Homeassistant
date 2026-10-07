@@ -41,6 +41,7 @@ from .share import (
     finalize_provisioned_node,
     normalize_share_text,
     parse_share_text,
+    remove_pending_node,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -238,7 +239,7 @@ class HeylightOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         options = ["add_device"]
         if self._pending_nodes():
-            options.append("finish_setup")
+            options.extend(["finish_setup", "forget_pending"])
         return self.async_show_menu(
             step_id="init",
             menu_options=options,
@@ -407,33 +408,36 @@ class HeylightOptionsFlow(OptionsFlow):
                     network, requested, count
                 )
 
-            result = await async_provision_device(
+            async def _persist_pending(result) -> None:
+                pending_text = append_provisioned_node(
+                    self.config_entry.data[CONF_SHARE_JSON],
+                    name=self._device_name,
+                    mac=device.address,
+                    unicast=result.unicast,
+                    device_key=result.device_key,
+                    element_count=result.element_count,
+                )
+                new_data = dict(self.config_entry.data)
+                new_data[CONF_SHARE_JSON] = pending_text
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data=new_data,
+                )
+
+                await coordinator.async_replace_network(
+                    parse_share_text(pending_text)
+                )
+                self._commission_pending = True
+                self._pending_unicast = result.unicast
+
+            await async_provision_device(
                 self.hass,
                 address=device.address,
                 net_key=network.net_key,
                 iv_index=network.iv_index,
                 allocate_unicast=allocate,
+                on_data_ready=_persist_pending,
             )
-
-            pending_text = append_provisioned_node(
-                self.config_entry.data[CONF_SHARE_JSON],
-                name=self._device_name,
-                mac=device.address,
-                unicast=result.unicast,
-                device_key=result.device_key,
-                element_count=result.element_count,
-            )
-            new_data = dict(self.config_entry.data)
-            new_data[CONF_SHARE_JSON] = pending_text
-            self.hass.config_entries.async_update_entry(
-                self.config_entry,
-                data=new_data,
-            )
-
-            pending_network = parse_share_text(pending_text)
-            await coordinator.async_replace_network(pending_network)
-            self._commission_pending = True
-            self._pending_unicast = result.unicast
 
         except Exception as exc:
             self._commission_error = str(exc)
@@ -555,6 +559,45 @@ class HeylightOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id="finish_setup",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_DEVICE): vol.In(choices)}
+            ),
+        )
+
+    async def async_step_forget_pending(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Forget an interrupted/uncertain provisioning record."""
+        pending = self._pending_nodes()
+        if not pending:
+            return await self.async_step_init()
+
+        choices = {
+            str(node.unicast): (
+                f"{node.name} — 0x{node.unicast:04X} ({node.mac})"
+            )
+            for node in pending
+        }
+
+        if user_input is not None:
+            unicast = int(str(user_input[CONF_DEVICE]), 0)
+            updated_text = remove_pending_node(
+                self.config_entry.data[CONF_SHARE_JSON],
+                unicast=unicast,
+            )
+            new_data = dict(self.config_entry.data)
+            new_data[CONF_SHARE_JSON] = updated_text
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data=new_data,
+            )
+            await self._coordinator.async_replace_network(
+                parse_share_text(updated_text)
+            )
+            return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="forget_pending",
             data_schema=vol.Schema(
                 {vol.Required(CONF_DEVICE): vol.In(choices)}
             ),
