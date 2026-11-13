@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from .brightness import physical_brightness_factor
 from .const import HEYLIGHT_COMPANY_ID, HEYLIGHT_VENDOR_MODEL
 
 DEFAULT_EFFECT = "normal"
@@ -113,7 +114,7 @@ class HeylightRuntime:
         self, rgb: tuple[int, int, int]
     ) -> tuple[int, int, int]:
         """Scale RGB value like lowering HSV V without changing saved colour."""
-        factor = max(1, min(255, int(self.brightness))) / 255.0
+        factor = physical_brightness_factor(self.brightness)
         return tuple(
             max(0, min(255, int(round(channel * factor))))
             for channel in rgb

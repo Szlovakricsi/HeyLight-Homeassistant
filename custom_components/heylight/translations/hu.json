@@ -108,6 +108,11 @@
       "reconnect_mesh_proxy": {
         "name": "Bluetooth Mesh újracsatlakoztatása"
       }
+    },
+    "sensor": {
+      "bluetooth_rssi": {
+        "name": "Bluetooth-jelerősség (RSSI)"
+      }
     }
   }
 }

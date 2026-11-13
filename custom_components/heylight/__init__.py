@@ -17,11 +17,12 @@ PLATFORMS: list[Platform] = [
     Platform.BUTTON,
     Platform.LIGHT,
     Platform.NUMBER,
+    Platform.SENSOR,
     Platform.SWITCH,
     Platform.TIME,
 ]
 
-FRONTEND_SCRIPT_URL = "/heylight/heylight-card.js"
+FRONTEND_SCRIPT_URL = "/heylight/heylight-card.js?v=0.6.3"
 _DATA_FRONTEND_REGISTERED = "frontend_registered"
 
 type HeylightConfigEntry = ConfigEntry[HeylightCoordinator]

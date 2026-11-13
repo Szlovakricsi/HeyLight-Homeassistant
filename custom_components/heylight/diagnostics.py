@@ -65,6 +65,11 @@ async def async_get_config_entry_diagnostics(
             "successful_connections": coordinator.successful_connections,
             "last_connection_error": coordinator.last_connection_error,
             "last_disconnect_reason": coordinator.last_disconnect_reason,
+            "rssi_dbm": coordinator.rssi_dbm,
+            "rssi_age_seconds": coordinator.rssi_age_seconds,
+            "rssi_last_seen": coordinator.rssi_last_seen_at,
+            "rssi_address": coordinator.rssi_address,
+            "rssi_source": coordinator.rssi_source,
         },
         "nodes": nodes,
     }

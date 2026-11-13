@@ -388,6 +388,11 @@ class PaletteColor(LightEntity, RestoreEntity):
     def rgb_color(self) -> tuple[int, int, int]:
         return self._runtime.colors[self._index]
 
+    @property
+    def brightness(self) -> int:
+        """All colors expose exactly the same shared brightness."""
+        return self._runtime.brightness
+
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
 
@@ -431,10 +436,13 @@ class PaletteColor(LightEntity, RestoreEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         rgb = kwargs.get(ATTR_RGB_COLOR)
+        brightness = kwargs.get(ATTR_BRIGHTNESS)
         if rgb is not None:
             self._runtime.colors[self._index] = tuple(
                 max(0, min(255, int(v))) for v in rgb
             )
+        if brightness is not None:
+            self._runtime.brightness = max(1, min(255, int(brightness)))
         self._runtime.color_enabled[self._index] = True
         self._runtime.notify()
         await self._apply_if_active()

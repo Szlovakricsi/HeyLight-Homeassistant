@@ -108,6 +108,11 @@
       "reconnect_mesh_proxy": {
         "name": "Reconnect Bluetooth Mesh"
       }
+    },
+    "sensor": {
+      "bluetooth_rssi": {
+        "name": "Bluetooth RSSI"
+      }
     }
   }
 }

@@ -46,3 +46,5 @@ jobs:
           for path in paths:
               validate(json.loads(path.read_text(encoding="utf-8")), path)
           PY
+      - name: Test brightness remapping
+        run: python -m unittest discover -s tests -v

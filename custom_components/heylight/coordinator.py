@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
+from time import monotonic
 from collections.abc import Callable
+
+from homeassistant.components import bluetooth
+from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
@@ -16,6 +21,7 @@ from .mesh_transport import (
     async_connect_bearer,
     async_register_proxy_callback,
     find_proxy_address,
+    find_proxy_service_info,
 )
 from .share import HeylightNetwork
 
@@ -24,6 +30,8 @@ _LOGGER = logging.getLogger(__name__)
 STORE_VERSION = 1
 SEQ_SAFETY_MARGIN = 32
 RECONNECT_SECONDS = 5
+RSSI_STALE_SECONDS = 120
+RSSI_REPORT_INTERVAL_SECONDS = 10
 
 
 class HeylightCoordinator:
@@ -45,6 +53,14 @@ class HeylightCoordinator:
         self._client: Any | None = None
         self._controller: HeylightMeshController | None = None
         self._listeners: list[Callable[[], None]] = []
+        self._rssi_listeners: list[Callable[[], None]] = []
+        self.rssi_address: str | None = None
+        self.rssi_source: str | None = None
+        self.last_rssi_dbm: int | None = None
+        self._rssi_seen_monotonic: float | None = None
+        self._rssi_seen_at: datetime | None = None
+        self._rssi_last_published: float | None = None
+        self._rssi_fresh = False
         self._connect_lock = asyncio.Lock()
         self._disconnect_lock = asyncio.Lock()
         self._command_lock = asyncio.Lock()
@@ -77,6 +93,15 @@ class HeylightCoordinator:
             self.network.proxy_macs,
             self._proxy_seen,
         )
+        known = find_proxy_service_info(
+            self.hass,
+            self.network.network_id,
+            self.network.net_key,
+            tuple(node.unicast for node in self.network.nodes),
+            self.network.proxy_macs,
+        )
+        if known is not None:
+            self._record_proxy_rssi(known)
 
     async def async_start(self) -> None:
         stored = await self._store.async_load() or {}
@@ -190,12 +215,99 @@ class HeylightCoordinator:
         for listener in tuple(self._listeners):
             listener()
 
+    def async_add_rssi_listener(
+        self, listener: Callable[[], None]
+    ) -> Callable[[], None]:
+        self._rssi_listeners.append(listener)
+
+        def remove() -> None:
+            if listener in self._rssi_listeners:
+                self._rssi_listeners.remove(listener)
+
+        return remove
+
     @callback
-    def _proxy_seen(self, _address: str) -> None:
+    def _notify_rssi(self) -> None:
+        for listener in tuple(self._rssi_listeners):
+            listener()
+
+    @property
+    def rssi_age_seconds(self) -> int | None:
+        if self._rssi_seen_monotonic is None:
+            return None
+        return max(0, int(monotonic() - self._rssi_seen_monotonic))
+
+    @property
+    def rssi_last_seen_at(self) -> str | None:
+        return self._rssi_seen_at.isoformat() if self._rssi_seen_at else None
+
+    @property
+    def rssi_dbm(self) -> int | None:
+        """Unknown when the last BLE advertisement is over two minutes old."""
+        age = self.rssi_age_seconds
+        if age is None or age > RSSI_STALE_SECONDS:
+            return None
+        return self.last_rssi_dbm
+
+    @callback
+    def _record_proxy_rssi(self, info: BluetoothServiceInfoBleak) -> None:
+        level = getattr(info, "rssi", None)
+        if level is None:
+            return
+        value = int(level)
+        if value == 0:
+            return
+        now = monotonic()
+        seen = float(getattr(info, "time", now))
+        age = max(0.0, now - seen)
+        if age > RSSI_STALE_SECONDS:
+            return
+        if self._rssi_seen_monotonic is not None and seen < self._rssi_seen_monotonic:
+            return
+        old = (self.last_rssi_dbm, self.rssi_address, self.rssi_source)
+        old_fresh = self._rssi_fresh
+        last_published = self._rssi_last_published
+        self.last_rssi_dbm = value
+        self.rssi_address = info.address
+        self.rssi_source = getattr(info, "source", None)
+        self._rssi_seen_monotonic = seen
+        self._rssi_seen_at = datetime.now(timezone.utc) - timedelta(seconds=age)
+        self._rssi_fresh = True
+        if (
+            not old_fresh
+            or old != (self.last_rssi_dbm, self.rssi_address, self.rssi_source)
+            or last_published is None
+            or now - last_published >= RSSI_REPORT_INTERVAL_SECONDS
+        ):
+            self._rssi_last_published = now
+            self._notify_rssi()
+
+    @callback
+    def _refresh_rssi(self) -> None:
+        """Poll the HA cache because RSSI changes need not trigger callbacks."""
+        if self.rssi_address is not None:
+            info = bluetooth.async_last_service_info(
+                self.hass, self.rssi_address, connectable=True
+            )
+            if info is None:
+                info = bluetooth.async_last_service_info(
+                    self.hass, self.rssi_address, connectable=False
+                )
+            if info is not None:
+                self._record_proxy_rssi(info)
+        fresh = self.rssi_dbm is not None
+        if fresh != self._rssi_fresh:
+            self._rssi_fresh = fresh
+            self._notify_rssi()
+
+    @callback
+    def _proxy_seen(self, info: BluetoothServiceInfoBleak) -> None:
+        self._record_proxy_rssi(info)
         self._wake.set()
 
     async def _connection_loop(self) -> None:
         while True:
+            self._refresh_rssi()
             if self._controller is not None:
                 client_connected = bool(
                     self._client is not None
@@ -271,6 +383,11 @@ class HeylightCoordinator:
                 raise ConnectionError(
                     "no matching HeyLight Mesh Proxy advertisement"
                 )
+            recent = bluetooth.async_last_service_info(
+                self.hass, address, connectable=True
+            )
+            if recent is not None:
+                self._record_proxy_rssi(recent)
 
             client, bearer = await async_connect_bearer(
                 self.hass, address

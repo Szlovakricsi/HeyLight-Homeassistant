@@ -92,13 +92,13 @@ def _matches(
     return info.address.upper() in proxy_macs
 
 
-def find_proxy_address(
+def find_proxy_service_info(
     hass: HomeAssistant,
     network_id: bytes,
     net_key: bytes,
     node_addresses: Collection[int],
     proxy_macs: frozenset[str],
-) -> str | None:
+) -> BluetoothServiceInfoBleak | None:
     for info in bluetooth.async_discovered_service_info(
         hass, connectable=False
     ):
@@ -111,8 +111,22 @@ def find_proxy_address(
             node_addresses,
             proxy_macs,
         ):
-            return info.address
+            return info
     return None
+
+
+def find_proxy_address(
+    hass: HomeAssistant,
+    network_id: bytes,
+    net_key: bytes,
+    node_addresses: Collection[int],
+    proxy_macs: frozenset[str],
+) -> str | None:
+    """Return the address of an eligible connectable mesh proxy."""
+    info = find_proxy_service_info(
+        hass, network_id, net_key, node_addresses, proxy_macs
+    )
+    return info.address if info is not None else None
 
 
 def async_register_proxy_callback(
@@ -121,7 +135,7 @@ def async_register_proxy_callback(
     net_key: bytes,
     node_addresses: Collection[int],
     proxy_macs: frozenset[str],
-    on_found: Callable[[str], None],
+    on_found: Callable[[BluetoothServiceInfoBleak], None],
 ) -> Callable[[], None]:
     def _callback(
         info: BluetoothServiceInfoBleak, _change: BluetoothChange
@@ -133,7 +147,7 @@ def async_register_proxy_callback(
             node_addresses,
             proxy_macs,
         ):
-            on_found(info.address)
+            on_found(info)
 
     return bluetooth.async_register_callback(
         hass,

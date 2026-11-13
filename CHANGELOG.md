@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.6.3
+
+### Added
+
+- A Bluetooth Mesh Proxy RSSI diagnostic sensor with its last advertisement timestamp, adapter and measurement age. Stale values become unknown after two minutes.
+- Shared brightness for all three color entities. Changing it on any color immediately updates the others.
+
+### Changed
+
+- Linear brightness remapping: the displayed 1% now gives the former 30% light output; displayed 100% still gives the original 100%.
+- The HeyLight Tree card now maps its slider end points exactly to Home Assistant 1 and 255 brightness.
+- Added brightness mapping regression tests.
+
 ## v0.6.2
 
 ### Added
