@@ -17,7 +17,7 @@
           "qr_image": "Share Device QR image"
         },
         "data_description": {
-          "qr_text": "Paste the JSON text beginning with {\"agent\":...",
+          "qr_text": "Paste the complete JSON text from the QR code, starting with the agent field.",
           "qr_image": "PNG/JPEG/WebP photo or screenshot of the QR code."
         }
       },

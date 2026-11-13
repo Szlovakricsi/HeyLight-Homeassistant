@@ -17,7 +17,7 @@
           "qr_image": "Share Device QR képe"
         },
         "data_description": {
-          "qr_text": "A teljes JSON szöveget illeszd be, amely így kezdődik: {\"agent\":...",
+          "qr_text": "Illeszd be a QR-kód teljes JSON-szövegét, amely az agent mezővel kezdődik.",
           "qr_image": "PNG/JPEG/WebP kép vagy képernyőkép a QR-kódról."
         }
       },

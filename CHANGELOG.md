@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.1
+
+### Fixed
+
+- Fix the Share Device QR import field description in the English and Hungarian translations so Home Assistant can parse it without interpreting a JSON example as a formatting placeholder.
+- Add translation-format validation to CI to catch malformed placeholders before release.
+
 ## v0.5.2
 
 Rebuilds the **HeyLight Tree** preview from a frame-by-frame review of the original HeyLight application video.

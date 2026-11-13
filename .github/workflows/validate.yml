@@ -23,3 +23,26 @@ jobs:
               json.loads(path.read_text())
               print(path)
           PY
+      - name: Validate translation placeholders
+        run: |
+          python - <<'PY'
+          import json
+          import string
+          from pathlib import Path
+
+          formatter = string.Formatter()
+          paths = [Path("custom_components/heylight/strings.json"), *Path("custom_components/heylight/translations").glob("*.json")]
+
+          def validate(value, path, key=""):
+              if isinstance(value, dict):
+                  for name, child in value.items():
+                      validate(child, path, f"{key}.{name}" if key else name)
+              elif isinstance(value, str):
+                  try:
+                      list(formatter.parse(value))
+                  except ValueError as exc:
+                      raise ValueError(f"{path}:{key}: {exc}") from exc
+
+          for path in paths:
+              validate(json.loads(path.read_text(encoding="utf-8")), path)
+          PY
