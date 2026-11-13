@@ -54,6 +54,7 @@ class HeylightCoordinator:
         self._stopping = False
         self._provisioning = False
         self.reconnect_attempts = 0
+        self.manual_reconnect_requests = 0
         self.successful_connections = 0
         self.last_connection_error: str | None = None
         self.last_disconnect_reason: str | None = None
@@ -131,6 +132,26 @@ class HeylightCoordinator:
     async def async_end_provisioning(self) -> None:
         """Allow normal Mesh Proxy connections again."""
         self._provisioning = False
+        self._wake.set()
+
+    async def async_force_reconnect(self) -> None:
+        """Drop a stale connection and wake the automatic retry loop."""
+        if self._stopping:
+            raise RuntimeError("HeyLight is shutting down")
+        if self._provisioning:
+            raise RuntimeError("Cannot reconnect during mesh provisioning")
+
+        # Do not interrupt a command or race an in-progress BLE connection.
+        async with self._command_lock:
+            async with self._connect_lock:
+                if self._stopping or self._provisioning:
+                    raise RuntimeError("HeyLight connection is not ready to restart")
+                await self._disconnect()
+                self.manual_reconnect_requests += 1
+                self.last_disconnect_reason = "manual reconnect requested"
+                self.last_connection_error = None
+
+        _LOGGER.info("Manual HeyLight Mesh Proxy reconnect requested")
         self._wake.set()
 
     async def async_wait_connected(
@@ -297,7 +318,7 @@ class HeylightCoordinator:
             if callable(set_callback):
                 set_callback(
                     lambda _client: self.hass.loop.call_soon_threadsafe(
-                        self._schedule_drop
+                        self._schedule_drop, client
                     )
                 )
 
@@ -307,8 +328,9 @@ class HeylightCoordinator:
             return controller
 
     @callback
-    def _schedule_drop(self) -> None:
-        if self._stopping:
+    def _schedule_drop(self, client: Any) -> None:
+        # Ignore delayed disconnect callbacks from a superseded BLE client.
+        if self._stopping or client is not self._client:
             return
         self.last_disconnect_reason = "Bleak disconnected callback"
         self.hass.async_create_background_task(

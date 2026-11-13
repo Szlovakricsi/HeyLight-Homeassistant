@@ -102,5 +102,12 @@
       "invalid_unicast_address": "Enter an unused unicast address from 0x0001 to 0x7FFE, for example 0x0010.",
       "confirm_forget_required": "Confirm that the device was reset or that provisioning definitely did not complete before forgetting it."
     }
+  },
+  "entity": {
+    "button": {
+      "reconnect_mesh_proxy": {
+        "name": "Reconnect Bluetooth Mesh"
+      }
+    }
   }
 }

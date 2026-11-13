@@ -14,6 +14,7 @@ from .coordinator import HeylightCoordinator
 from .share import parse_share_text
 
 PLATFORMS: list[Platform] = [
+    Platform.BUTTON,
     Platform.LIGHT,
     Platform.NUMBER,
     Platform.SWITCH,

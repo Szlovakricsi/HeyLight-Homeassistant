@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.2
+
+### Added
+
+- Manual **Reconnect Bluetooth Mesh** button on each supported HeyLight device. This remains available while the light is offline and drops any stale link before waking the existing retry loop.
+- Manual reconnect count in the integration diagnostics.
+
+### Fixed
+
+- Ignore delayed Bluetooth disconnect callbacks from older proxy clients so they cannot drop a newer connection.
+
 ## v0.6.1
 
 ### Fixed

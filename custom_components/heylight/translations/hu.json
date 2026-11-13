@@ -102,5 +102,12 @@
       "invalid_unicast_address": "Adj meg egy szabad unicast címet 0x0001 és 0x7FFE között, például 0x0010.",
       "confirm_forget_required": "A törlés előtt erősítsd meg, hogy az eszközt resetelted, vagy a provisioning biztosan nem fejeződött be."
     }
+  },
+  "entity": {
+    "button": {
+      "reconnect_mesh_proxy": {
+        "name": "Bluetooth Mesh újracsatlakoztatása"
+      }
+    }
   }
 }
