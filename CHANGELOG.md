@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.4
+
+### Changed
+
+- Move the manual **Reconnect Bluetooth Mesh** button from Configuration to Diagnostics on each HeyLight device, beside the RSSI sensor. No change to reconnect behavior.
+
 ## v0.6.3
 
 ### Added

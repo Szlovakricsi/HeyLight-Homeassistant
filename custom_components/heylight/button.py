@@ -32,7 +32,7 @@ class HeylightReconnectButton(ButtonEntity):
 
     _attr_has_entity_name = True
     _attr_translation_key = "reconnect_mesh_proxy"
-    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:bluetooth-connect"
     _attr_should_poll = False
 
