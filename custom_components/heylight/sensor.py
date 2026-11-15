@@ -32,11 +32,14 @@ async def async_setup_entry(
 
 
 class HeylightRSSISensor(SensorEntity):
-    """RSSI from the most recently heard Bluetooth advertisement."""
+    """Optional short-term advertisement RSSI diagnostic (not continuous monitoring)."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "bluetooth_rssi"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # Advertisement RSSI is an intermittent, short-term diagnostic only.
+    # Keep it disabled for newly registered devices; users can enable it for tests.
+    _attr_entity_registry_enabled_default = False
     _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
     _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
     _attr_state_class = SensorStateClass.MEASUREMENT

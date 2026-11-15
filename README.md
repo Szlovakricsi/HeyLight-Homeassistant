@@ -93,6 +93,7 @@ Other HeyLight products using the same Telink vendor model **may work**, but the
 - effect speed from 1 to 10
 - optional second and third effect colours
 - automatic Bluetooth reconnect
+- optional Bluetooth Mesh Proxy advertisement RSSI for short-term testing (disabled by default; not continuous monitoring)
 - device-side timer configuration using the Bluetooth Mesh Scheduler model
 - bundled **HeyLight Tree** dashboard card
 - HACS-compatible integration layout and GitHub releases
@@ -190,6 +191,18 @@ Additional entities are created where supported:
 
 The availability of the extra colour controls depends on the currently selected effect.
 
+### Bluetooth RSSI — optional, temporary diagnostic
+
+> **Warning — not a continuous Bluetooth signal monitor.** The **Bluetooth RSSI (test only)** sensor is **disabled by default**. Its readings come from intermittently received Bluetooth Mesh Proxy *advertisements*, **not** the ongoing GATT connection used to control the lights. Use it only for short-term signal-strength testing and troubleshooting, not for continuous monitoring, presence detection, or judging connection availability.
+
+- **How to enable it for a test:** In Home Assistant, open **Settings → Devices & services → HeyLight → your device → Entities**. Show disabled entities, select **Bluetooth RSSI (test only)**, and enable it. Disable it again after testing if you no longer need it.
+- **Why it may say `unknown`:** If the integration has never received a matching advertisement, or the last matching advertisement is **more than 120 seconds old**, the sensor shows `unknown`. Some devices stop or reduce Mesh Proxy advertising while a Bluetooth GATT connection is established. A working light with an `unknown` RSSI does **not** by itself indicate a lost connection.
+- **Diagnostic attributes:** `last_advertisement`, `measurement_age_seconds`, `proxy_address`, and `bluetooth_adapter` help explain where and when the last reading was received. Measurements are intermittent and should not be treated as a live RSSI stream.
+- **Already installed?** Existing RSSI entities that you previously enabled will **remain enabled** after upgrading. The disabled-by-default setting applies when Home Assistant first registers a new RSSI entity. You can manually disable an existing one from its entity settings.
+- **Improve distant Bluetooth coverage:** If the light string/controller is far from Home Assistant's Bluetooth adapter, a nearby **ESPHome Bluetooth Proxy** is recommended for a stronger, more reliable connection. Place the proxy closer to the controller, make sure it has a stable network connection, and configure it to support **active Bluetooth connections** (a scan-only proxy is insufficient for Mesh Proxy GATT control). The RSSI reading may still be intermittent even when connectivity is improved.
+
+**Important:** The integration may keep a Bluetooth Mesh GATT connection open for control; it is the **RSSI advertisement measurement**, not necessarily the control connection, that is intermittent.
+
 ### Device-side timing
 
 When the light exposes the required Bluetooth Mesh Scheduler models, the integration also creates configuration entities for:
@@ -256,6 +269,8 @@ The integration accepts either:
 - a cryptographically valid Mesh Node Identity advertisement derived from the imported NetKey and node unicast address.
 
 It keeps a Mesh Proxy GATT connection where possible and reconnects automatically after a disconnect.
+
+**RSSI is for temporary diagnostics only and is disabled by default.** Advertisement-based RSSI does not measure the persistent GATT control link. See [Bluetooth RSSI — optional, temporary diagnostic](#bluetooth-rssi--optional-temporary-diagnostic). If the device is far from the Bluetooth adapter, position an ESPHome Bluetooth Proxy closer to it.
 
 A controller may allow only one Mesh Proxy GATT client at a time. Because of this, the official HeyLight app may temporarily be unable to connect while Home Assistant is actively holding the proxy connection.
 

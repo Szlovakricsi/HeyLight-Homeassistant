@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.6.5
+
+### Changed
+
+- **Bluetooth RSSI (test only)** is now **disabled by default** for newly registered HeyLight devices. It can be enabled temporarily from Home Assistant's entity settings. Existing user-enabled RSSI entities are not automatically disabled by an upgrade.
+- The RSSI diagnostic name explicitly indicates its short-term testing purpose in English and Hungarian.
+- Clarified in the README that RSSI is collected opportunistically from Mesh Proxy BLE advertisements, **not** from the potentially persistent Mesh GATT control connection. The RSSI sensor is not continuous monitoring and goes `unknown` after 120 seconds without a valid advertisement.
+- Added guidance for enabling/disabling the diagnostic, interpreting `unknown`, and checking its last-advertisement, measurement-age, proxy-address and adapter attributes.
+- Added a recommendation to use a nearby **ESPHome Bluetooth Proxy with active connection support** when the light/controller is far from Home Assistant's Bluetooth adapter, for better connectivity.
+- No changes to Bluetooth Mesh connection management, lighting effects, existing RSSI timeout behavior, or default functionality of other entities.
+
+### Tests
+
+- Added a regression test that verifies RSSI remains an opt-in diagnostic entity.
+
 ## v0.6.4
 
 ### Changed

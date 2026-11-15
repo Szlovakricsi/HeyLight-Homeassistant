@@ -111,7 +111,7 @@
     },
     "sensor": {
       "bluetooth_rssi": {
-        "name": "Bluetooth RSSI"
+        "name": "Bluetooth RSSI (test only)"
       }
     }
   }
